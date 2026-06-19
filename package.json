@@ -1,0 +1,80 @@
+{
+  "name": "vim-master",
+  "displayName": "VimMaster — Learn Vim Interactively",
+  "description": "Master Vim through gamified lessons, interactive challenges, and mini-games. Built for developers who want to become keyboard warriors.",
+  "version": "1.0.0",
+  "publisher": "vim-master-dev",
+  "author": {
+    "name": "Owskar Ganbawale",
+    "url": "https://github.com/Owskar"
+  },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Education", "Other"],
+  "keywords": [
+    "vim", "vi", "learn-vim", "vim-tutorial", "vim-keybindings",
+    "gamification", "interactive", "education", "terminal",
+    "keyboard", "text-editor", "productivity", "developer-tools",
+    "vim-motions", "vim-commands", "vim-practice", "vim-game",
+    "learn-to-code", "coding-education", "open-source"
+  ],
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Owskar/vim-master-extension"
+  },
+  "homepage": "https://github.com/Owskar/vim-master-extension#readme",
+  "bugs": { "url": "https://github.com/Owskar/vim-master-extension/issues" },
+  "license": "MIT",
+  "activationEvents": ["onStartupFinished"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "vimMaster.openDashboard", "title": "VimMaster: Open Dashboard" },
+      { "command": "vimMaster.startLesson",   "title": "VimMaster: Start a Lesson" },
+      { "command": "vimMaster.openPlayground","title": "VimMaster: Open Playground" },
+      { "command": "vimMaster.openGames",     "title": "VimMaster: Play Vim Games" },
+      { "command": "vimMaster.viewProgress",  "title": "VimMaster: View My Progress" },
+      { "command": "vimMaster.resetProgress", "title": "VimMaster: Reset Progress" },
+      { "command": "vimMaster.openCheatSheet","title": "VimMaster: Cheat Sheet" },
+      { "command": "vimMaster.dailyChallenge","title": "VimMaster: Daily Challenge" }
+    ],
+    "viewsContainers": {
+      "activitybar": [{
+        "id": "vimMaster",
+        "title": "VimMaster",
+        "icon": "media/sidebar-icon.svg"
+      }]
+    },
+    "views": {
+      "vimMaster": [{
+        "id": "vimMasterProgress",
+        "name": "My Progress",
+        "type": "webview"
+      }]
+    },
+    "menus": {
+      "commandPalette": [
+        { "command": "vimMaster.openDashboard" },
+        { "command": "vimMaster.openGames" },
+        { "command": "vimMaster.openPlayground" },
+        { "command": "vimMaster.dailyChallenge" },
+        { "command": "vimMaster.openCheatSheet" },
+        { "command": "vimMaster.resetProgress" }
+      ]
+    },
+    "keybindings": [{
+      "command": "vimMaster.openDashboard",
+      "key": "ctrl+shift+v",
+      "mac": "cmd+shift+v"
+    }]
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "package": "vsce package --allow-missing-repository --skip-license"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "eslint": "^8.0.0",
+    "@vscode/vsce": "^2.0.0"
+  }
+}
