@@ -80,7 +80,7 @@ Each lesson includes rich theory and an interactive quiz you must pass to earn X
 
 ### Option A — Install VSIX (recommended)
 ```bash
-# Extract the ZIP, then:
+
 code --install-extension vim-master-1.0.0.vsix
 ```
 Restart VS Code → press `Ctrl+Shift+V` to open VimMaster.
