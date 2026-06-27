@@ -2,44 +2,46 @@
   "name": "vimquest",
   "displayName": "VimQuest",
   "description": "Learn Vim step by step — from baby steps to advanced mastery, with interactive lessons and games",
-  "version": "1.0.0",
-  "publisher": "vimquest",
-  "engines": {
-    "vscode": "^1.80.0"
+  "version": "1.1.0",
+  "publisher": "Owskar",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Owskar/vim-master-extension"
   },
-  "categories": [
-    "Education",
-    "Other"
-  ],
-  "keywords": [
-    "vim",
-    "learn vim",
-    "vim tutorial",
-    "vim game",
-    "vim keybindings"
-  ],
+  "bugs": {
+    "url": "https://github.com/Owskar/vim-master-extension/issues"
+  },
+  "homepage": "https://github.com/Owskar/vim-master-extension#readme",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Education", "Other"],
+  "keywords": ["vim", "learn vim", "vim tutorial", "vim game", "vim keybindings", "vimquest"],
   "icon": "media/icon.png",
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "activationEvents": ["onStartupFinished"],
   "main": "./src/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "vimquest.openLesson",
-        "title": "VimQuest: Open Lesson"
+        "title": "Open Lesson",
+        "category": "VimQuest"
       },
       {
         "command": "vimquest.openGame",
-        "title": "VimQuest: Play Game"
-      },
-      {
-        "command": "vimquest.resetProgress",
-        "title": "VimQuest: Reset Progress"
+        "title": "Play Games",
+        "category": "VimQuest",
+        "icon": "$(game)"
       },
       {
         "command": "vimquest.showWelcome",
-        "title": "VimQuest: Show Welcome"
+        "title": "Show Dashboard",
+        "category": "VimQuest",
+        "icon": "$(home)"
+      },
+      {
+        "command": "vimquest.resetProgress",
+        "title": "Reset Progress",
+        "category": "VimQuest"
       }
     ],
     "viewsContainers": {
@@ -66,19 +68,24 @@
       ]
     },
     "menus": {
-      "view/item/context": [
+      "view/title": [
         {
-          "command": "vimquest.openLesson",
+          "command": "vimquest.showWelcome",
           "when": "view == vimquest.lessonsView",
-          "group": "inline"
+          "group": "navigation"
+        },
+        {
+          "command": "vimquest.openGame",
+          "when": "view == vimquest.lessonsView",
+          "group": "navigation"
         }
       ]
     }
   },
   "scripts": {
-    "package": "npx vsce package"
+    "package": "npx vsce package --allow-missing-repository"
   },
   "devDependencies": {
-    "@vscode/vsce": "^2.32.0"
+    "@vscode/vsce": "^2.22.0"
   }
 }

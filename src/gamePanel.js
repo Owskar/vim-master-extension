@@ -1,654 +1,461 @@
 const vscode = require("vscode");
 
+const _gamePanels = new Map();
+
 function getGamePanel(context, providers) {
+  if (_gamePanels.has("game")) {
+    try { _gamePanels.get("game").reveal(vscode.ViewColumn.One); return; } catch(_) {}
+  }
+
   const panel = vscode.window.createWebviewPanel(
     "vimquestGame",
-    "VimQuest: Command Dojo 🎮",
+    "🎮 VimQuest — Command Dojo",
     vscode.ViewColumn.One,
-    { enableScripts: true, retainContextWhenHidden: true }
+    { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] }
   );
 
-  panel.webview.html = getGameHTML();
+  _gamePanels.set("game", panel);
+  panel.onDidDispose(() => _gamePanels.delete("game"));
+  panel.webview.html = buildGameHTML();
 
   panel.webview.onDidReceiveMessage(async (msg) => {
     if (msg.command === "saveScore") {
-      const best = context.globalState.get(`vimquest.best.${msg.game}`, 0);
+      const key  = `vimquest.best.${msg.game}`;
+      const best = context.globalState.get(key, 0);
       if (msg.score > best) {
-        await context.globalState.update(`vimquest.best.${msg.game}`, msg.score);
-        vscode.window.showInformationMessage(
-          `🏆 New high score: ${msg.score} in ${msg.game}!`
-        );
+        await context.globalState.update(key, msg.score);
+        vscode.window.showInformationMessage(`🏆 New high score in ${msg.game}: ${msg.score}!`);
       }
+    }
+    if (msg.command === "goHome") {
+      const { getWelcomePanel } = require("./welcomePanel");
+      panel.dispose();
+      getWelcomePanel(context, providers);
     }
   });
 
   return panel;
 }
 
-function getGameHTML() {
-  return `<!DOCTYPE html>
+function buildGameHTML() {
+  return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <title>VimQuest Games</title>
 <style>
-  :root {
-    --bg: var(--vscode-editor-background);
-    --fg: var(--vscode-editor-foreground);
-    --accent: #7c3aed;
-    --accent2: #06b6d4;
-    --green: #10b981;
-    --yellow: #f59e0b;
-    --red: #ef4444;
-    --card: var(--vscode-editorWidget-background);
-    --border: var(--vscode-editorWidget-border, #3f3f3f);
-    --code-bg: var(--vscode-textCodeBlock-background, #1e1e2e);
-    --radius: 10px;
-    --font-mono: 'Cascadia Code', 'Fira Code', Consolas, monospace;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--fg);
-    font-family: var(--vscode-font-family, sans-serif);
-    min-height: 100vh;
-    font-size: 14px;
-  }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:var(--vscode-editor-background,#1e1e2e);
+  --fg:var(--vscode-editor-foreground,#cdd6f4);
+  --card:var(--vscode-editorWidget-background,#181825);
+  --border:var(--vscode-editorWidget-border,#313244);
+  --code-bg:var(--vscode-textCodeBlock-background,#11111b);
+  --accent:#7c3aed;--accent2:#06b6d4;--green:#10b981;--yellow:#f59e0b;--red:#f38ba8;
+  --r:10px;--mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--vscode-font-family,-apple-system,sans-serif);font-size:14px;min-height:100vh}
 
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 24px;
-    border-bottom: 1px solid var(--border);
-    background: var(--card);
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-  .logo {
-    font-size: 22px;
-    font-weight: 800;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+/* NAV */
+.nav{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--card);sticky;top:0;z-index:20}
+.logo{font-size:18px;font-weight:900;background:linear-gradient(135deg,#a855f7,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;cursor:pointer}
+.nav-btn{background:none;border:1px solid var(--border);border-radius:7px;color:var(--fg);font-size:12px;padding:5px 12px;cursor:pointer}
+.nav-btn:hover{border-color:var(--accent);color:var(--accent)}
 
-  .layout { max-width: 820px; margin: 0 auto; padding: 32px 24px 60px; }
+/* LAYOUT */
+.layout{max-width:780px;margin:0 auto;padding:28px 20px 60px}
+.page-title{font-size:24px;font-weight:900;letter-spacing:-.5px;margin-bottom:6px}
+.page-sub{font-size:13px;opacity:.6;margin-bottom:24px}
 
-  .page-title {
-    font-size: 26px;
-    font-weight: 800;
-    margin-bottom: 8px;
-    letter-spacing: -0.5px;
-  }
-  .page-sub {
-    color: var(--fg);
-    opacity: 0.6;
-    font-size: 14px;
-    margin-bottom: 32px;
-  }
+/* TABS */
+.tabs{display:flex;gap:8px;margin-bottom:22px;flex-wrap:wrap}
+.tab{padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.tab:hover{border-color:var(--accent2)}
+.tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 
-  /* GAME SELECTOR */
-  .game-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-  }
-  .tab-btn {
-    padding: 8px 18px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--fg);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .tab-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .tab-btn.active {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-  }
+/* GAME AREA */
+.game-area{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:26px;min-height:400px}
 
-  /* GAME AREA */
-  .game-area {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 28px;
-    min-height: 420px;
-  }
+/* ── QUIZ ───────────────────────────────────────── */
+.quiz-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.quiz-title{font-size:16px;font-weight:700}
+.score-box{font-size:13px;font-weight:700;color:var(--yellow)}
+.prog-row{margin-bottom:18px}
+.prog-bar{height:5px;background:var(--code-bg);border-radius:3px;overflow:hidden;margin-top:4px}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transition:width .3s}
+.cmd-display{text-align:center;margin:20px 0}
+.cmd-label{font-size:12px;opacity:.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.cmd-key{font-family:var(--mono);font-size:48px;font-weight:900;padding:16px 32px;background:var(--code-bg);border:2px solid var(--border);border-radius:12px;color:#e879f9;display:inline-block;letter-spacing:2px;transition:all .25s}
+.cmd-key.ok{border-color:var(--green);color:var(--green)}
+.cmd-key.no{border-color:var(--red);color:var(--red);animation:shk .3s}
+@keyframes shk{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.opt{padding:11px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:13px;cursor:pointer;text-align:left;transition:all .15s;font-family:inherit}
+.opt:hover:not(:disabled){border-color:var(--accent);background:rgba(124,58,237,.08)}
+.opt.ok{border-color:var(--green)!important;background:rgba(16,185,129,.1)!important;color:var(--green)}
+.opt.no{border-color:var(--red)!important;background:rgba(243,139,168,.1)!important;color:var(--red)}
+.opt:disabled{cursor:not-allowed}
 
-  /* COMMAND FLASH */
-  .flash-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-  }
-  .flash-title { font-size: 18px; font-weight: 700; }
-  .score-display {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--yellow);
-  }
-  .flash-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 200px;
-    gap: 20px;
-  }
-  .flash-question {
-    font-size: 13px;
-    opacity: 0.7;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-weight: 600;
-  }
-  .flash-command {
-    font-family: var(--font-mono);
-    font-size: 52px;
-    font-weight: 900;
-    padding: 20px 40px;
-    background: var(--code-bg);
-    border: 2px solid var(--border);
-    border-radius: 12px;
-    color: #e879f9;
-    letter-spacing: 2px;
-    text-shadow: 0 0 30px rgba(232,121,249,0.3);
-    transition: all 0.2s;
-  }
-  .flash-command.correct {
-    border-color: var(--green);
-    color: var(--green);
-    text-shadow: 0 0 30px rgba(16,185,129,0.3);
-  }
-  .flash-command.wrong {
-    border-color: var(--red);
-    color: var(--red);
-    animation: shake 0.3s ease;
-  }
-  @keyframes shake {
-    0%,100% { transform: translateX(0); }
-    20% { transform: translateX(-8px); }
-    40% { transform: translateX(8px); }
-    60% { transform: translateX(-8px); }
-    80% { transform: translateX(8px); }
-  }
-  .flash-options {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    width: 100%;
-    max-width: 500px;
-  }
-  .option-btn {
-    padding: 12px 16px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: left;
-    font-family: var(--vscode-font-family, sans-serif);
-  }
-  .option-btn:hover { border-color: var(--accent); background: rgba(124,58,237,0.08); }
-  .option-btn.correct { border-color: var(--green); background: rgba(16,185,129,0.12); color: var(--green); }
-  .option-btn.wrong { border-color: var(--red); background: rgba(239,68,68,0.12); color: var(--red); }
-  .option-btn:disabled { cursor: not-allowed; }
-  .progress-bar-wrap {
-    width: 100%;
-    height: 6px;
-    background: var(--code-bg);
-    border-radius: 3px;
-    margin-bottom: 20px;
-    overflow: hidden;
-  }
-  .progress-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    border-radius: 3px;
-    transition: width 0.3s;
-  }
+/* ── SEQUENCE ──────────────────────────────────── */
+.seq-prompt{padding:16px 18px;background:var(--code-bg);border:1px solid var(--border);border-radius:8px;font-size:14px;line-height:1.6;margin:16px 0}
+.seq-prompt strong{color:var(--accent2)}
+.seq-row{display:flex;gap:10px;align-items:center}
+.seq-input{flex:1;font-family:var(--mono);font-size:16px;padding:10px 14px;background:var(--code-bg);border:2px solid var(--border);border-radius:8px;color:var(--fg);outline:none;transition:border-color .15s}
+.seq-input:focus{border-color:var(--accent)}
+.seq-btn{padding:10px 20px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap}
+.seq-btn:hover{background:#6d28d9}
+.seq-feedback{min-height:32px;font-size:13px;font-weight:600;padding:6px 0;display:flex;align-items:center;gap:8px}
+.seq-actions{display:flex;gap:12px;margin-top:4px}
+.link-btn{background:none;border:none;font-size:12px;cursor:pointer;text-decoration:underline;padding:0;opacity:.7}
+.link-btn:hover{opacity:1}
+.hint-box{font-size:12px;opacity:.7;font-style:italic;margin-top:4px;padding:6px 10px;background:rgba(6,182,212,.06);border-radius:6px}
 
-  /* SEQUENCE GAME */
-  .sequence-area { display: flex; flex-direction: column; gap: 16px; }
-  .seq-prompt {
-    font-size: 15px;
-    line-height: 1.6;
-    padding: 16px 20px;
-    background: var(--code-bg);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-  }
-  .seq-prompt strong { color: var(--accent2); }
-  .seq-input-row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-  .seq-input {
-    font-family: var(--font-mono);
-    font-size: 18px;
-    padding: 10px 16px;
-    background: var(--code-bg);
-    border: 2px solid var(--border);
-    border-radius: 8px;
-    color: var(--fg);
-    outline: none;
-    flex: 1;
-    transition: border-color 0.15s;
-  }
-  .seq-input:focus { border-color: var(--accent); }
-  .seq-submit {
-    padding: 10px 22px;
-    border-radius: 8px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .seq-submit:hover { background: #6d28d9; }
-  .seq-feedback {
-    min-height: 36px;
-    font-size: 14px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .seq-score-row {
-    display: flex;
-    gap: 20px;
-    font-size: 13px;
-    font-weight: 700;
-  }
-  .seq-score-item { color: var(--yellow); }
+/* ── FLASHCARDS ────────────────────────────────── */
+.fc-info{font-size:13px;opacity:.6;margin-bottom:14px}
+.fc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px}
+.fc{padding:14px;background:var(--code-bg);border:1px solid var(--border);border-radius:9px;cursor:pointer;transition:all .2s;text-align:center;user-select:none}
+.fc:hover{border-color:var(--accent);transform:translateY(-2px)}
+.fc.flipped{background:rgba(124,58,237,.08);border-color:var(--accent)}
+.fc-key{font-family:var(--mono);font-size:20px;font-weight:900;color:#e879f9;margin-bottom:6px}
+.fc-desc{font-size:11px;line-height:1.4;min-height:28px;transition:opacity .2s}
+.fc-desc.hidden{opacity:0}
+.fc-reveal-all{margin-top:12px;font-size:12px;cursor:pointer;color:var(--accent2);text-decoration:underline;background:none;border:none}
 
-  /* RESULT SCREEN */
-  .result-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-    padding: 32px 0;
-  }
-  .result-emoji { font-size: 56px; }
-  .result-title { font-size: 22px; font-weight: 800; }
-  .result-score { font-size: 18px; color: var(--yellow); font-weight: 700; }
-  .result-message { font-size: 14px; opacity: 0.7; text-align: center; max-width: 320px; }
-  .result-btn {
-    padding: 12px 28px;
-    border-radius: 8px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
-    margin-top: 8px;
-  }
-  .result-btn:hover { background: #6d28d9; }
-
-  /* CHEAT SHEET GAME */
-  .cheatsheet-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 10px;
-    margin-top: 16px;
-  }
-  .cs-card {
-    padding: 14px 16px;
-    background: var(--code-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: center;
-  }
-  .cs-card:hover { border-color: var(--accent); transform: translateY(-1px); }
-  .cs-card.flipped { background: rgba(124,58,237,0.1); border-color: var(--accent); }
-  .cs-key {
-    font-family: var(--font-mono);
-    font-size: 20px;
-    font-weight: 900;
-    color: #e879f9;
-    margin-bottom: 6px;
-  }
-  .cs-desc {
-    font-size: 11px;
-    opacity: 0.85;
-    line-height: 1.4;
-  }
-  .cs-hidden { opacity: 0; }
+/* ── RESULT ────────────────────────────────────── */
+.result{display:flex;flex-direction:column;align-items:center;gap:14px;padding:36px 0;text-align:center}
+.r-emoji{font-size:52px}
+.r-title{font-size:22px;font-weight:800}
+.r-score{font-size:18px;color:var(--yellow);font-weight:700}
+.r-msg{font-size:13px;opacity:.7;max-width:300px;line-height:1.6}
+.r-btn{padding:11px 28px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:14px;cursor:pointer;margin-top:6px}
+.r-btn:hover{background:#6d28d9}
 </style>
 </head>
 <body>
 
-<div class="topbar">
-  <span class="logo">⚔️ VimQuest</span>
-  <span style="font-size:13px;opacity:0.6;">Command Dojo</span>
+<div class="nav">
+  <span class="logo" onclick="goHome()">⚔️ VimQuest</span>
+  <button class="nav-btn" onclick="goHome()">← Dashboard</button>
 </div>
 
 <div class="layout">
   <div class="page-title">🎮 Command Dojo</div>
-  <div class="page-sub">Test your Vim knowledge with games and challenges</div>
+  <div class="page-sub">Test your Vim muscle memory with three different games</div>
 
-  <div class="game-tabs">
-    <button class="tab-btn active" onclick="switchGame('quiz')">⚡ Command Quiz</button>
-    <button class="tab-btn" onclick="switchGame('sequence')">🧩 Sequence Builder</button>
-    <button class="tab-btn" onclick="switchGame('cheatsheet')">📋 Flashcard Drill</button>
+  <div class="tabs">
+    <button class="tab on" id="tab-quiz"  onclick="switchTo('quiz')">⚡ Command Quiz</button>
+    <button class="tab"    id="tab-seq"   onclick="switchTo('seq')">🧩 Sequence Builder</button>
+    <button class="tab"    id="tab-flash" onclick="switchTo('flash')">📋 Flashcard Drill</button>
   </div>
 
-  <div class="game-area" id="gameArea">
-    <!-- Games rendered here by JS -->
-  </div>
+  <div class="game-area" id="area"></div>
 </div>
 
 <script>
 const vscode = acquireVsCodeApi();
 
-// ─── DATA ────────────────────────────────────────────────────────────────
-const quizData = [
-  { cmd: "gg", answers: ["Go to top of file", "Go to bottom of file", "Go to last line of block", "Open a new file"], correct: 0 },
-  { cmd: "G", answers: ["Go to first line", "Go to bottom of file", "Go to next function", "Close the file"], correct: 1 },
-  { cmd: "dd", answers: ["Delete a word", "Duplicate line", "Delete current line", "Decrease indent"], correct: 2 },
-  { cmd: "yy", answers: ["Redo last change", "Yank (copy) current line", "Undo last change", "Jump to next match"], correct: 1 },
-  { cmd: "p", answers: ["Pause editor", "Paste after cursor", "Previous buffer", "Print file"], correct: 1 },
-  { cmd: "u", answers: ["Undo last change", "Select until end", "Uppercase selection", "Update file"], correct: 0 },
-  { cmd: "w", answers: ["Write file", "Jump to next word", "Move left", "Select word"], correct: 1 },
-  { cmd: "b", answers: ["Back to previous file", "Jump back to previous word", "Select block", "Break line"], correct: 1 },
-  { cmd: "ci(", answers: ["Copy inside parens", "Close inside parens", "Change inside parentheses", "Count inside parens"], correct: 2 },
-  { cmd: "di\"", answers: ["Duplicate inside quotes", "Delete inside double quotes", "Define inside quotes", "Display inside quotes"], correct: 1 },
-  { cmd: "V", answers: ["Visual character mode", "Visual line mode", "Visual block mode", "Verify mode"], correct: 1 },
-  { cmd: "Ctrl+v", answers: ["Paste from clipboard", "Visual block mode", "Enter command mode", "Vert split"], correct: 1 },
-  { cmd: "%", answers: ["Go to line percentage", "Jump to matching bracket", "Macro command", "Mark position"], correct: 1 },
-  { cmd: ".", answers: ["Next search result", "Repeat last change", "Enter command mode", "Toggle comment"], correct: 1 },
-  { cmd: ">G", answers: ["Go to indent level", "Indent from cursor to end of file", "Indent block", "Greater-than search"], correct: 1 },
-  { cmd: "f{char}", answers: ["Find file named char", "Jump to next occurrence of char on line", "Filter by char", "Format char"], correct: 1 },
-  { cmd: "*", answers: ["Multiply selection", "Search forward for word under cursor", "Visual star mode", "Mark all occurrences"], correct: 1 },
-  { cmd: "ZZ", answers: ["Enter ZEN mode", "Save and quit", "Undo everything", "Zoom in"], correct: 1 },
-  { cmd: "qa", answers: ["Quit all files", "Start recording macro into register a", "Query and replace", "Quick action menu"], correct: 1 },
-  { cmd: "@a", answers: ["Run macro in register a", "Append to register a", "Jump to mark a", "Search in register a"], correct: 0 },
+// ── DATA ─────────────────────────────────────────────────────────────────────
+const QUIZ = [
+  {k:"h",       a:["Move cursor left","Move cursor right","Move cursor up","Move cursor down"],     c:0},
+  {k:"j",       a:["Move cursor up","Move cursor left","Move cursor down","Move cursor right"],     c:2},
+  {k:"k",       a:["Move cursor down","Move cursor up","Move cursor right","Move cursor left"],     c:1},
+  {k:"l",       a:["Move cursor left","Move cursor down","Move cursor up","Move cursor right"],     c:3},
+  {k:"w",       a:["Write file","Jump to next word start","Move line down","Select word"],          c:1},
+  {k:"b",       a:["Jump back to previous word","Break line","Write buffer","Select block"],        c:0},
+  {k:"e",       a:["Exit Vim","Jump to end of word","Expand selection","Edit file"],               c:1},
+  {k:"dd",      a:["Duplicate line","Decrease indent","Delete current line","Debug code"],         c:2},
+  {k:"yy",      a:["Undo last change","Yank (copy) current line","Redo change","Select line"],     c:1},
+  {k:"p",       a:["Print file","Paste after cursor","Previous buffer","Pause editor"],            c:1},
+  {k:"P",       a:["Print file","Previous file","Paste before cursor","Page up"],                  c:2},
+  {k:"u",       a:["Undo last change","Go up one line","Update file","Uppercase word"],            c:0},
+  {k:"Ctrl+r",  a:["Record macro","Redo (undo the undo)","Replace word","Run command"],            c:1},
+  {k:"gg",      a:["Open files","Go to top of file","Go to last change","Group lines"],            c:1},
+  {k:"G",       a:["Go to top of file","Group selection","Go to bottom of file","Go to mark"],    c:2},
+  {k:"0",       a:["Jump to end of line","Go to line 0","Jump to start of line","Select all"],    c:2},
+  {k:"$",       a:["Search pattern","Jump to end of line","Run shell","Go to last file"],          c:1},
+  {k:"^",       a:["Start of file","First non-blank char of line","Search pattern","Top of screen"],c:1},
+  {k:"i",       a:["Indent line","Insert before cursor","Info command","Increase number"],         c:1},
+  {k:"a",       a:["Select all","Append after cursor","Add new line","Auto-complete"],             c:1},
+  {k:"o",       a:["Open file","Options menu","Open new line below","Overwrite mode"],             c:2},
+  {k:"O",       a:["Open file above","Open new line above","Overwrite all","Options"],             c:1},
+  {k:"A",       a:["Select all","Append at end of line","Add indentation","Auto-save"],            c:1},
+  {k:"I",       a:["Info","Insert at start of line","Increase indent","Italic mode"],              c:1},
+  {k:"v",       a:["View mode","Visual character mode","Vim command","Vertical split"],             c:1},
+  {k:"V",       a:["Visual block mode","Vertical split","Visual line mode","Vim info"],            c:2},
+  {k:"Ctrl+v",  a:["Paste","Visual block mode","Version info","Vertical scroll"],                  c:1},
+  {k:"dw",      a:["Duplicate word","Delete to end of word","Delete word","Do work"],              c:2},
+  {k:"cw",      a:["Copy word","Change (replace) word","Count words","Close window"],              c:1},
+  {k:"ci(",     a:["Copy inner parens","Close if parens","Change inside parentheses","Count items"],c:2},
+  {k:'di"',     a:["Duplicate inside quotes","Delete inside double quotes","Dim text","Define item"],c:1},
+  {k:".",       a:["Next search match","Repeat last change","Enter command mode","Tab complete"],   c:1},
+  {k:"*",       a:["Multiply selection","Mark all","Search forward for word under cursor","Comment"],c:2},
+  {k:"f{c}",    a:["Find file","Jump to next occurrence of char on line","Format code","Fold"],    c:1},
+  {k:"ZZ",      a:["Zoom in","Zig-zag","Save and quit","Suspend Vim"],                             c:2},
+  {k:":w",      a:["Write (save) file","Wipe buffer","Wrap text","Window command"],                c:0},
+  {k:":q!",     a:["Quiet mode","Quit without saving","Quick format","Query replace"],              c:1},
+  {k:":wq",     a:["Write quietly","Save and quit","Wrap and quit","Window query"],                c:1},
+  {k:"qa",      a:["Quit all files","Quick action","Start recording macro into register a","Query all"],c:2},
+  {k:"@a",      a:["Append to register a","Play macro in register a","Jump to mark a","Search a"],c:1},
+  {k:'"+y',     a:["Yank to history","Yank to system clipboard","Yank to file","Yank as text"],    c:1},
+  {k:"gv",      a:["Go to visual","Re-select last visual selection","Go to vim","View git"],       c:1},
+  {k:"ma",      a:["Move and append","Set mark at position a","Make alias","Multiply all"],        c:1},
+  {k:"'a",      a:["Append at mark a","Jump to line of mark a","All marks","Auto-indent a"],      c:1},
+  {k:"%",       a:["Line percentage","Jump to matching bracket/paren","Macro percent","Modulo"],   c:1},
+  {k:">>",      a:["Right shift bits","Indent line right","Go to end","Greater-than twice"],       c:1},
+  {k:"<<",      a:["Left shift bits","Go to start","Unindent line left","Less-than twice"],        c:2},
+  {k:"~",       a:["Shell command","Toggle case of character","Tilde search","Regex any char"],    c:1},
+  {k:"xp",      a:["Delete and paste","Transpose (swap) two characters","Exit and print","X command"],c:1},
+  {k:"J",       a:["Join two lines","Jump down","Java mode","Justify text"],                       c:0},
 ];
 
-const sequenceData = [
-  { task: "You want to delete from cursor to the end of the line", answer: "d$", hint: "operator + motion to end of line" },
-  { task: "You want to change (replace) the word under your cursor", answer: "cw", hint: "change + word motion" },
-  { task: "You want to copy the entire current line", answer: "yy", hint: "double the yank operator" },
-  { task: "You want to paste BEFORE the cursor", answer: "P", hint: "uppercase P pastes before" },
-  { task: "You want to go to line 42", answer: "42G", hint: "number + G" },
-  { task: "You want to jump 5 words forward", answer: "5w", hint: "count + word jump" },
-  { task: "You want to delete 3 lines at once", answer: "3dd", hint: "count + delete line" },
-  { task: "You want to visually select the whole current line", answer: "V", hint: "capital V for line visual" },
-  { task: "You want to undo the last 3 changes", answer: "3u", hint: "count + undo" },
-  { task: "You want to delete inside the quotes on this line: name = \\\"John\\\"", answer: 'di"', hint: "delete inner quotes text object" },
-  { task: "You want to search for the word under your cursor going forward", answer: "*", hint: "the star command" },
-  { task: "You want to jump to the end of the current word", answer: "e", hint: "single letter motion" },
-  { task: "You want to append text AFTER the current line (new line below)", answer: "o", hint: "opens a new line below" },
-  { task: "You want to replay the last macro", answer: "@@", hint: "double @ symbol" },
-  { task: "You want to save the file and quit", answer: ":wq", hint: "write + quit in command mode" },
+const SEQ = [
+  {task:"Delete from cursor to <strong>end of line</strong>",          ans:"d$",     hint:"operator + motion to end of line"},
+  {task:"Change (replace) the <strong>word under cursor</strong>",      ans:"cw",     hint:"change + word motion"},
+  {task:"Copy the <strong>entire current line</strong>",                ans:"yy",     hint:"double the yank operator"},
+  {task:"Paste <strong>BEFORE</strong> the cursor",                     ans:"P",      hint:"uppercase P"},
+  {task:"Go to <strong>line 42</strong>",                               ans:"42G",    hint:"number + G"},
+  {task:"Jump <strong>5 words forward</strong>",                        ans:"5w",     hint:"count + word jump"},
+  {task:"Delete <strong>3 lines</strong> at once",                      ans:"3dd",    hint:"count + delete line"},
+  {task:"Select the <strong>whole current line</strong> visually",      ans:"V",      hint:"capital V = line visual"},
+  {task:"Undo the last <strong>3 changes</strong>",                     ans:"3u",     hint:"count + undo"},
+  {task:'Delete text <strong>inside double quotes</strong>',            ans:'di"',    hint:"delete inner quotes text object"},
+  {task:"Search for the <strong>word under cursor</strong> (forward)",  ans:"*",      hint:"the star key"},
+  {task:"Jump to <strong>end of current word</strong>",                 ans:"e",      hint:"single letter motion"},
+  {task:"Open a <strong>new line below</strong> and enter insert mode", ans:"o",      hint:"opens a line below"},
+  {task:"<strong>Replay</strong> the last macro",                       ans:"@@",     hint:"double @ symbol"},
+  {task:"<strong>Save</strong> the file and <strong>quit</strong>",     ans:":wq",    hint:"write + quit in command mode"},
+  {task:"Go to <strong>top of file</strong>",                           ans:"gg",     hint:"double g"},
+  {task:"Go to <strong>bottom of file</strong>",                        ans:"G",      hint:"capital G"},
+  {task:"Jump to <strong>start of line</strong> (column 0)",            ans:"0",      hint:"the zero key"},
+  {task:"Jump to <strong>end of line</strong>",                         ans:"$",      hint:"dollar sign"},
+  {task:"Append text at <strong>end of current line</strong>",          ans:"A",      hint:"capital A"},
+  {task:"Insert text at <strong>start of current line</strong>",        ans:"I",      hint:"capital I"},
+  {task:"Delete the <strong>current character</strong> under cursor",   ans:"x",      hint:"x deletes char"},
+  {task:"Enter <strong>visual block</strong> mode",                     ans:"\\u0003",hint:"Ctrl+V for column select"},
+  {task:"Indent current line <strong>to the right</strong>",            ans:">>",     hint:"two greater-than signs"},
+  {task:"Join the <strong>current line with the next</strong>",         ans:"J",      hint:"capital J joins lines"},
 ];
 
-const flashcardData = [
-  { key: "h", desc: "Move cursor left" },
-  { key: "j", desc: "Move cursor down" },
-  { key: "k", desc: "Move cursor up" },
-  { key: "l", desc: "Move cursor right" },
-  { key: "w", desc: "Jump to next word start" },
-  { key: "b", desc: "Jump to previous word start" },
-  { key: "e", desc: "Jump to end of word" },
-  { key: "0", desc: "Jump to line start (column 0)" },
-  { key: "^", desc: "Jump to first non-blank char" },
-  { key: "$", desc: "Jump to end of line" },
-  { key: "gg", desc: "Go to top of file" },
-  { key: "G", desc: "Go to bottom of file" },
-  { key: "i", desc: "Insert before cursor" },
-  { key: "a", desc: "Append after cursor" },
-  { key: "o", desc: "Open new line below" },
-  { key: "O", desc: "Open new line above" },
-  { key: "I", desc: "Insert at start of line" },
-  { key: "A", desc: "Append at end of line" },
-  { key: "dd", desc: "Delete current line" },
-  { key: "yy", desc: "Yank (copy) current line" },
-  { key: "p", desc: "Paste after cursor" },
-  { key: "P", desc: "Paste before cursor" },
-  { key: "u", desc: "Undo last change" },
-  { key: "Ctrl+r", desc: "Redo" },
-  { key: "v", desc: "Visual character mode" },
-  { key: "V", desc: "Visual line mode" },
-  { key: "Ctrl+v", desc: "Visual block mode" },
-  { key: ".", desc: "Repeat last change" },
-  { key: "*", desc: "Search word under cursor" },
-  { key: "%", desc: "Jump to matching bracket" },
-  { key: "ZZ", desc: "Save and quit" },
-  { key: ":q!", desc: "Quit without saving" },
+const FLASH = [
+  {k:"h",      d:"Move cursor left"},
+  {k:"j",      d:"Move cursor down"},
+  {k:"k",      d:"Move cursor up"},
+  {k:"l",      d:"Move cursor right"},
+  {k:"w",      d:"Jump to next word start"},
+  {k:"b",      d:"Jump to previous word start"},
+  {k:"e",      d:"Jump to end of word"},
+  {k:"0",      d:"Jump to start of line"},
+  {k:"^",      d:"First non-blank char of line"},
+  {k:"$",      d:"Jump to end of line"},
+  {k:"gg",     d:"Go to top of file"},
+  {k:"G",      d:"Go to bottom of file"},
+  {k:"i",      d:"Insert before cursor"},
+  {k:"a",      d:"Append after cursor"},
+  {k:"o",      d:"Open new line below"},
+  {k:"O",      d:"Open new line above"},
+  {k:"I",      d:"Insert at start of line"},
+  {k:"A",      d:"Append at end of line"},
+  {k:"x",      d:"Delete character under cursor"},
+  {k:"dd",     d:"Delete current line"},
+  {k:"yy",     d:"Yank (copy) current line"},
+  {k:"p",      d:"Paste after cursor"},
+  {k:"P",      d:"Paste before cursor"},
+  {k:"u",      d:"Undo last change"},
+  {k:"Ctrl+r", d:"Redo (undo the undo)"},
+  {k:"v",      d:"Visual character mode"},
+  {k:"V",      d:"Visual line mode"},
+  {k:".",      d:"Repeat last change"},
+  {k:"*",      d:"Search word under cursor (forward)"},
+  {k:"%",      d:"Jump to matching bracket"},
+  {k:"ZZ",     d:"Save and quit"},
+  {k:":q!",    d:"Quit without saving"},
+  {k:">>",     d:"Indent line right"},
+  {k:"J",      d:"Join line with next"},
+  {k:"~",      d:"Toggle case of character"},
 ];
 
-// ─── STATE ───────────────────────────────────────────────────────────────
-let currentGame = 'quiz';
-let quizState = null;
-let seqState = null;
+// ── STATE ────────────────────────────────────────────────────────────────────
+let mode='quiz', qState=null, sState=null;
 
-// ─── GAME SWITCHER ────────────────────────────────────────────────────────
-function switchGame(game) {
-  currentGame = game;
-  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-    btn.classList.toggle('active', ['quiz','sequence','cheatsheet'][i] === game);
+// ── SWITCH ───────────────────────────────────────────────────────────────────
+function switchTo(m){
+  mode=m;
+  ['quiz','seq','flash'].forEach(t=>{
+    document.getElementById('tab-'+t).className='tab'+(t===m?' on':'');
   });
-  if (game === 'quiz') startQuiz();
-  else if (game === 'sequence') startSequence();
-  else if (game === 'cheatsheet') startCheatsheet();
+  if(m==='quiz')  startQuiz();
+  if(m==='seq')   startSeq();
+  if(m==='flash') startFlash();
 }
 
-// ─── QUIZ GAME ───────────────────────────────────────────────────────────
-function startQuiz() {
-  const shuffled = [...quizData].sort(() => Math.random() - 0.5).slice(0, 10);
-  quizState = { questions: shuffled, current: 0, score: 0, answered: false };
+// ── QUIZ ─────────────────────────────────────────────────────────────────────
+function startQuiz(){
+  const pool=[...QUIZ].sort(()=>Math.random()-.5).slice(0,12);
+  qState={pool,idx:0,score:0,locked:false};
   renderQuiz();
 }
 
-function renderQuiz() {
-  const q = quizState.questions[quizState.current];
-  const progress = ((quizState.current) / quizState.questions.length) * 100;
-
-  document.getElementById('gameArea').innerHTML = \`
-    <div class="flash-header">
-      <span class="flash-title">⚡ Command Quiz</span>
-      <span class="score-display">Score: \${quizState.score} / \${quizState.questions.length}</span>
-    </div>
-    <div class="progress-bar-wrap">
-      <div class="progress-bar-fill" style="width:\${progress}%"></div>
-    </div>
-    <div style="font-size:12px;opacity:0.6;margin-bottom:16px;">Question \${quizState.current + 1} of \${quizState.questions.length}</div>
-    <div class="flash-card">
-      <div class="flash-question">What does this command do?</div>
-      <div class="flash-command" id="flashCmd">\${q.cmd}</div>
-      <div class="flash-options">
-        \${q.answers.map((ans, i) => \`
-          <button class="option-btn" id="opt\${i}" onclick="answerQuiz(\${i})">
-            \${ans}
-          </button>
-        \`).join('')}
-      </div>
-    </div>
-  \`;
+function renderQuiz(){
+  const {pool,idx,score}=qState;
+  const q=pool[idx];
+  const pct=Math.round(idx/pool.length*100);
+  get('area').innerHTML=\`
+<div class="quiz-header">
+  <span class="quiz-title">⚡ Command Quiz</span>
+  <span class="score-box">Score: \${score}/\${pool.length}</span>
+</div>
+<div class="prog-row">
+  <span style="font-size:12px;opacity:.6">Question \${idx+1} of \${pool.length}</span>
+  <div class="prog-bar"><div class="prog-fill" id="qpf" style="width:\${pct}%"></div></div>
+</div>
+<div class="cmd-display">
+  <div class="cmd-label">What does this Vim command do?</div>
+  <div class="cmd-key" id="cmdkey">\${q.k}</div>
+</div>
+<div class="opts">
+  \${q.a.map((ans,i)=>\`<button class="opt" id="opt\${i}" onclick="answer(\${i})">\${ans}</button>\`).join('')}
+</div>\`;
 }
 
-function answerQuiz(idx) {
-  if (quizState.answered) return;
-  quizState.answered = true;
-
-  const q = quizState.questions[quizState.current];
-  const isCorrect = idx === q.correct;
-  if (isCorrect) quizState.score++;
-
-  document.querySelectorAll('.option-btn').forEach((btn, i) => {
-    btn.disabled = true;
-    if (i === q.correct) btn.classList.add('correct');
-    else if (i === idx && !isCorrect) btn.classList.add('wrong');
+function answer(idx){
+  if(qState.locked) return;
+  qState.locked=true;
+  const q=qState.pool[qState.idx];
+  const ok=idx===q.c;
+  if(ok) qState.score++;
+  q.a.forEach((_,i)=>{
+    const el=get('opt'+i);
+    el.disabled=true;
+    if(i===q.c) el.classList.add('ok');
+    else if(i===idx&&!ok) el.classList.add('no');
   });
-
-  const cmdEl = document.getElementById('flashCmd');
-  cmdEl.classList.add(isCorrect ? 'correct' : 'wrong');
-
-  setTimeout(() => {
-    quizState.current++;
-    quizState.answered = false;
-    if (quizState.current < quizState.questions.length) {
-      renderQuiz();
-    } else {
-      showQuizResult();
-    }
-  }, 1200);
+  get('cmdkey').classList.add(ok?'ok':'no');
+  setTimeout(()=>{
+    qState.idx++;
+    qState.locked=false;
+    if(qState.idx<qState.pool.length) renderQuiz();
+    else showQuizResult();
+  },1100);
 }
 
-function showQuizResult() {
-  const { score, questions } = quizState;
-  const pct = Math.round((score / questions.length) * 100);
-  const emoji = pct >= 80 ? '🏆' : pct >= 60 ? '⚔️' : pct >= 40 ? '📖' : '🐣';
-  const msg = pct >= 80 ? "Outstanding! You're a Vim Warrior!" : pct >= 60 ? "Great work! Keep practicing!" : pct >= 40 ? "Not bad — review the lessons and try again!" : "Keep studying — you'll get there!";
-
-  document.getElementById('gameArea').innerHTML = \`
-    <div class="result-screen">
-      <div class="result-emoji">\${emoji}</div>
-      <div class="result-title">Quiz Complete!</div>
-      <div class="result-score">\${score} / \${questions.length} correct (\${pct}%)</div>
-      <div class="result-message">\${msg}</div>
-      <button class="result-btn" onclick="startQuiz()">🔄 Play Again</button>
-    </div>
-  \`;
-
-  vscode.postMessage({ command: 'saveScore', game: 'quiz', score: pct });
+function showQuizResult(){
+  const {score,pool}=qState;
+  const pct=Math.round(score/pool.length*100);
+  const [em,msg]=pct>=90?['🏆','Outstanding! Vim Master material!']:
+                  pct>=70?['⚔️','Great work! Keep it up!']:
+                  pct>=50?['📖','Getting there — review and retry!']:
+                         ['🐣','Keep studying — you will get it!'];
+  get('area').innerHTML=\`
+<div class="result">
+  <div class="r-emoji">\${em}</div>
+  <div class="r-title">Quiz Complete!</div>
+  <div class="r-score">\${score}/\${pool.length} correct (\${pct}%)</div>
+  <div class="r-msg">\${msg}</div>
+  <button class="r-btn" onclick="startQuiz()">🔄 Play Again</button>
+</div>\`;
+  vscode.postMessage({command:'saveScore',game:'quiz',score:pct});
 }
 
-// ─── SEQUENCE GAME ────────────────────────────────────────────────────────
-function startSequence() {
-  const shuffled = [...sequenceData].sort(() => Math.random() - 0.5);
-  seqState = { questions: shuffled, current: 0, correct: 0, total: 0, showHint: false };
-  renderSequence();
+// ── SEQUENCE ──────────────────────────────────────────────────────────────────
+function startSeq(){
+  const pool=[...SEQ].sort(()=>Math.random()-.5);
+  sState={pool,idx:0,correct:0,total:0};
+  renderSeq();
 }
 
-function renderSequence() {
-  const q = seqState.questions[seqState.current % seqState.questions.length];
-  document.getElementById('gameArea').innerHTML = \`
-    <div class="sequence-area">
-      <div class="flash-header">
-        <span class="flash-title">🧩 Sequence Builder</span>
-        <span class="score-display">✅ \${seqState.correct} / \${seqState.total}</span>
-      </div>
-      <div style="font-size:13px;opacity:0.6;margin-bottom:4px;">Type the Vim command to accomplish this task:</div>
-      <div class="seq-prompt">\${q.task}</div>
-      <div class="seq-input-row">
-        <input class="seq-input" id="seqInput" type="text" placeholder="Type the command..." autocomplete="off" spellcheck="false"
-          onkeydown="if(event.key==='Enter') checkSeq()">
-        <button class="seq-submit" onclick="checkSeq()">Check →</button>
-      </div>
-      <div class="seq-feedback" id="seqFeedback"></div>
-      <div style="display:flex;gap:12px;">
-        <button onclick="toggleHint()" style="font-size:12px;background:none;border:none;color:var(--accent2);cursor:pointer;text-decoration:underline;">
-          💡 Show hint
-        </button>
-        <button onclick="nextSeq()" style="font-size:12px;background:none;border:none;color:var(--fg);opacity:0.6;cursor:pointer;text-decoration:underline;">
-          Skip →
-        </button>
-      </div>
-      <div id="hintBox" style="display:none;font-size:12px;opacity:0.7;font-style:italic;padding:8px 0;">Hint: \${q.hint}</div>
-    </div>
-  \`;
-  document.getElementById('seqInput').focus();
+function renderSeq(){
+  const {pool,idx,correct,total}=sState;
+  if(idx>=pool.length){ showSeqResult(); return; }
+  const q=pool[idx];
+  get('area').innerHTML=\`
+<div class="quiz-header">
+  <span class="quiz-title">🧩 Sequence Builder</span>
+  <span class="score-box">✅ \${correct}/\${total}</span>
+</div>
+<div style="font-size:13px;opacity:.6;margin-bottom:4px">Type the Vim command for this task:</div>
+<div class="seq-prompt">\${q.task}</div>
+<div class="seq-row">
+  <input class="seq-input" id="si" type="text" placeholder="Type command…" autocomplete="off" spellcheck="false"
+    onkeydown="if(event.key==='Enter'){event.preventDefault();checkSeq()}">
+  <button class="seq-btn" onclick="checkSeq()">Check →</button>
+</div>
+<div class="seq-feedback" id="sf"></div>
+<div class="seq-actions">
+  <button class="link-btn" style="color:var(--accent2)" onclick="toggleHint()">💡 Hint</button>
+  <button class="link-btn" onclick="skipSeq()">Skip →</button>
+</div>
+<div class="hint-box" id="hb" style="display:none">Hint: \${q.hint}</div>\`;
+  get('si').focus();
 }
 
-function checkSeq() {
-  const input = document.getElementById('seqInput').value.trim();
-  const q = seqState.questions[seqState.current % seqState.questions.length];
-  const fb = document.getElementById('seqFeedback');
-  seqState.total++;
-
-  if (input === q.answer) {
-    seqState.correct++;
-    fb.innerHTML = '<span style="color:var(--green)">✅ Correct!</span>';
-    setTimeout(nextSeq, 800);
+function checkSeq(){
+  const val=get('si').value.trim();
+  const q=sState.pool[sState.idx];
+  sState.total++;
+  if(val===q.ans){
+    sState.correct++;
+    get('sf').innerHTML='<span style="color:var(--green)">✅ Correct!</span>';
+    setTimeout(nextSeq,700);
   } else {
-    fb.innerHTML = \`<span style="color:var(--red)">❌ Not quite. Answer: <code style="font-family:monospace;background:var(--code-bg);padding:1px 6px;border-radius:4px;">\${q.answer}</code></span>\`;
+    get('sf').innerHTML=\`<span style="color:var(--red)">❌ Answer: <code style="font-family:monospace;background:var(--code-bg);padding:1px 6px;border-radius:4px">\${q.ans}</code></span>\`;
   }
 }
-
-function nextSeq() {
-  seqState.current++;
-  if (seqState.current >= seqState.questions.length) {
-    showSeqResult();
-  } else {
-    renderSequence();
-  }
+function skipSeq(){ sState.total++; nextSeq(); }
+function nextSeq(){ sState.idx++; renderSeq(); }
+function toggleHint(){
+  const b=get('hb'); b.style.display=b.style.display==='none'?'block':'none';
+}
+function showSeqResult(){
+  const {correct,total,pool}=sState;
+  const pct=total?Math.round(correct/total*100):0;
+  get('area').innerHTML=\`
+<div class="result">
+  <div class="r-emoji">🧩</div>
+  <div class="r-title">All \${pool.length} sequences done!</div>
+  <div class="r-score">\${correct}/\${total} correct (\${pct}%)</div>
+  <div class="r-msg">Practice the ones you missed in the lessons.</div>
+  <button class="r-btn" onclick="startSeq()">🔄 Play Again</button>
+</div>\`;
+  vscode.postMessage({command:'saveScore',game:'seq',score:pct});
 }
 
-function showSeqResult() {
-  const { correct, total } = seqState;
-  const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
-  document.getElementById('gameArea').innerHTML = \`
-    <div class="result-screen">
-      <div class="result-emoji">🧩</div>
-      <div class="result-title">Sequence Complete!</div>
-      <div class="result-score">\${correct} / \${total} correct (\${pct}%)</div>
-      <div class="result-message">You worked through all \${seqState.questions.length} sequences!</div>
-      <button class="result-btn" onclick="startSequence()">🔄 Play Again</button>
-    </div>
-  \`;
-  vscode.postMessage({ command: 'saveScore', game: 'sequence', score: pct });
-}
-
-function toggleHint() {
-  const box = document.getElementById('hintBox');
-  box.style.display = box.style.display === 'none' ? 'block' : 'none';
-}
-
-// ─── FLASHCARD GAME ───────────────────────────────────────────────────────
-function startCheatsheet() {
-  const shuffled = [...flashcardData].sort(() => Math.random() - 0.5);
-  const flipped = new Set();
-
-  document.getElementById('gameArea').innerHTML = \`
-    <div>
-      <div class="flash-header" style="margin-bottom:16px;">
-        <span class="flash-title">📋 Flashcard Drill</span>
-        <span style="font-size:12px;opacity:0.6;">Click a card to reveal its meaning</span>
-      </div>
-      <div class="cheatsheet-grid" id="csGrid"></div>
-    </div>
-  \`;
-
-  const grid = document.getElementById('csGrid');
-  shuffled.forEach((card, i) => {
-    const el = document.createElement('div');
-    el.className = 'cs-card';
-    el.innerHTML = \`
-      <div class="cs-key">\${card.key}</div>
-      <div class="cs-desc cs-hidden" id="csd\${i}">\${card.desc}</div>
-    \`;
-    el.onclick = () => {
+// ── FLASHCARDS ────────────────────────────────────────────────────────────────
+function startFlash(){
+  const cards=[...FLASH].sort(()=>Math.random()-.5);
+  get('area').innerHTML=\`
+<div class="quiz-header">
+  <span class="quiz-title">📋 Flashcard Drill</span>
+  <button class="r-btn" style="font-size:12px;padding:5px 14px" onclick="revealAll()">Reveal All</button>
+</div>
+<div class="fc-info">Click any card to flip it and see its meaning.</div>
+<div class="fc-grid" id="fcgrid"></div>\`;
+  const grid=get('fcgrid');
+  cards.forEach((card,i)=>{
+    const el=document.createElement('div');
+    el.className='fc';
+    el.innerHTML=\`<div class="fc-key">\${card.k}</div><div class="fc-desc hidden" id="fd\${i}">\${card.d}</div>\`;
+    el.onclick=()=>{
       el.classList.toggle('flipped');
-      const desc = document.getElementById(\`csd\${i}\`);
-      desc.classList.toggle('cs-hidden');
+      const desc=get('fd'+i);
+      desc.classList.toggle('hidden');
     };
     grid.appendChild(el);
   });
 }
+function revealAll(){
+  document.querySelectorAll('.fc').forEach(el=>{
+    el.classList.add('flipped');
+    el.querySelectorAll('.fc-desc').forEach(d=>d.classList.remove('hidden'));
+  });
+}
 
-// ─── INIT ─────────────────────────────────────────────────────────────────
+// ── UTILS ────────────────────────────────────────────────────────────────────
+function get(id){ return document.getElementById(id); }
+function goHome(){ vscode.postMessage({command:'goHome'}); }
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
 startQuiz();
 </script>
 </body>
