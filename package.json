@@ -1,80 +1,84 @@
 {
-  "name": "vim-master",
-  "displayName": "VimMaster — Learn Vim Interactively",
-  "description": "Master Vim through gamified lessons, interactive challenges, and mini-games. Built for developers who want to become keyboard warriors.",
+  "name": "vimquest",
+  "displayName": "VimQuest",
+  "description": "Learn Vim step by step — from baby steps to advanced mastery, with interactive lessons and games",
   "version": "1.0.0",
-  "publisher": "vim-master-dev",
-  "author": {
-    "name": "Owskar Ganbawale",
-    "url": "https://github.com/Owskar"
+  "publisher": "vimquest",
+  "engines": {
+    "vscode": "^1.80.0"
   },
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Education", "Other"],
+  "categories": [
+    "Education",
+    "Other"
+  ],
   "keywords": [
-    "vim", "vi", "learn-vim", "vim-tutorial", "vim-keybindings",
-    "gamification", "interactive", "education", "terminal",
-    "keyboard", "text-editor", "productivity", "developer-tools",
-    "vim-motions", "vim-commands", "vim-practice", "vim-game",
-    "learn-to-code", "coding-education", "open-source"
+    "vim",
+    "learn vim",
+    "vim tutorial",
+    "vim game",
+    "vim keybindings"
   ],
   "icon": "media/icon.png",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Owskar/vim-master-extension"
-  },
-  "homepage": "https://github.com/Owskar/vim-master-extension#readme",
-  "bugs": { "url": "https://github.com/Owskar/vim-master-extension/issues" },
-  "license": "MIT",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./src/extension.js",
   "contributes": {
     "commands": [
-      { "command": "vimMaster.openDashboard", "title": "VimMaster: Open Dashboard" },
-      { "command": "vimMaster.startLesson",   "title": "VimMaster: Start a Lesson" },
-      { "command": "vimMaster.openPlayground","title": "VimMaster: Open Playground" },
-      { "command": "vimMaster.openGames",     "title": "VimMaster: Play Vim Games" },
-      { "command": "vimMaster.viewProgress",  "title": "VimMaster: View My Progress" },
-      { "command": "vimMaster.resetProgress", "title": "VimMaster: Reset Progress" },
-      { "command": "vimMaster.openCheatSheet","title": "VimMaster: Cheat Sheet" },
-      { "command": "vimMaster.dailyChallenge","title": "VimMaster: Daily Challenge" }
+      {
+        "command": "vimquest.openLesson",
+        "title": "VimQuest: Open Lesson"
+      },
+      {
+        "command": "vimquest.openGame",
+        "title": "VimQuest: Play Game"
+      },
+      {
+        "command": "vimquest.resetProgress",
+        "title": "VimQuest: Reset Progress"
+      },
+      {
+        "command": "vimquest.showWelcome",
+        "title": "VimQuest: Show Welcome"
+      }
     ],
     "viewsContainers": {
-      "activitybar": [{
-        "id": "vimMaster",
-        "title": "VimMaster",
-        "icon": "media/sidebar-icon.svg"
-      }]
-    },
-    "views": {
-      "vimMaster": [{
-        "id": "vimMasterProgress",
-        "name": "My Progress",
-        "type": "webview"
-      }]
-    },
-    "menus": {
-      "commandPalette": [
-        { "command": "vimMaster.openDashboard" },
-        { "command": "vimMaster.openGames" },
-        { "command": "vimMaster.openPlayground" },
-        { "command": "vimMaster.dailyChallenge" },
-        { "command": "vimMaster.openCheatSheet" },
-        { "command": "vimMaster.resetProgress" }
+      "activitybar": [
+        {
+          "id": "vimquest",
+          "title": "VimQuest",
+          "icon": "media/sidebar-icon.svg"
+        }
       ]
     },
-    "keybindings": [{
-      "command": "vimMaster.openDashboard",
-      "key": "ctrl+shift+v",
-      "mac": "cmd+shift+v"
-    }]
+    "views": {
+      "vimquest": [
+        {
+          "id": "vimquest.lessonsView",
+          "name": "Lessons",
+          "type": "tree"
+        },
+        {
+          "id": "vimquest.progressView",
+          "name": "Your Progress",
+          "type": "tree"
+        }
+      ]
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "vimquest.openLesson",
+          "when": "view == vimquest.lessonsView",
+          "group": "inline"
+        }
+      ]
+    }
   },
   "scripts": {
-    "lint": "eslint src",
-    "package": "vsce package --allow-missing-repository --skip-license"
+    "package": "npx vsce package"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
-    "eslint": "^8.0.0",
-    "@vscode/vsce": "^2.0.0"
+    "@vscode/vsce": "^2.32.0"
   }
 }
