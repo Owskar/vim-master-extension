@@ -2,7 +2,7 @@
   "name": "vimquest",
   "displayName": "VimQuest",
   "description": "Learn Vim step by step \u2014 from baby steps to advanced mastery, with interactive lessons and games",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "publisher": "Owskar",
   "license": "MIT",
   "repository": {
