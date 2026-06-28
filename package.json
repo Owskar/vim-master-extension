@@ -1,8 +1,8 @@
 {
   "name": "vimquest",
   "displayName": "VimQuest",
-  "description": "Learn Vim step by step — from baby steps to advanced mastery, with interactive lessons and games",
-  "version": "1.1.0",
+  "description": "Learn Vim step by step \u2014 from baby steps to advanced mastery, with interactive lessons and games",
+  "version": "1.3.1",
   "publisher": "Owskar",
   "license": "MIT",
   "repository": {
@@ -13,11 +13,24 @@
     "url": "https://github.com/Owskar/vim-master-extension/issues"
   },
   "homepage": "https://github.com/Owskar/vim-master-extension#readme",
-  "engines": { "vscode": "^1.80.0" },
-  "categories": ["Education", "Other"],
-  "keywords": ["vim", "learn vim", "vim tutorial", "vim game", "vim keybindings", "vimquest"],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Education",
+    "Other"
+  ],
+  "keywords": [
+    "vim",
+    "learn vim",
+    "vim tutorial",
+    "vim game",
+    "vimquest"
+  ],
   "icon": "media/icon.png",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./src/extension.js",
   "contributes": {
     "commands": [
@@ -37,6 +50,18 @@
         "title": "Show Dashboard",
         "category": "VimQuest",
         "icon": "$(home)"
+      },
+      {
+        "command": "vimquest.openCheatsheet",
+        "title": "Vim Cheat Sheet",
+        "category": "VimQuest",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "vimquest.dailyChallenge",
+        "title": "Daily Challenge",
+        "category": "VimQuest",
+        "icon": "$(calendar)"
       },
       {
         "command": "vimquest.resetProgress",
@@ -78,14 +103,19 @@
           "command": "vimquest.openGame",
           "when": "view == vimquest.lessonsView",
           "group": "navigation"
+        },
+        {
+          "command": "vimquest.openCheatsheet",
+          "when": "view == vimquest.lessonsView",
+          "group": "navigation"
         }
       ]
     }
   },
   "scripts": {
-    "package": "npx vsce package --allow-missing-repository"
+    "package": "npx vsce package --no-dependencies"
   },
   "devDependencies": {
-    "@vscode/vsce": "^2.22.0"
+    "@vscode/vsce": "^2.32.0"
   }
 }

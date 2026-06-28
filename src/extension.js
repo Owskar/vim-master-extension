@@ -1,81 +1,92 @@
-const vscode = require("vscode");
-const { LessonsProvider, ProgressProvider } = require("./sidebar");
-const { getLessonPanel } = require("./lessonPanel");
-const { getGamePanel }   = require("./gamePanel");
-const { getWelcomePanel } = require("./welcomePanel");
+// ─────────────────────────────────────────────────────────────
+//  VimQuest — Main Extension Entry Point
+//  src/extension.js
+// ─────────────────────────────────────────────────────────────
+const vscode = require('vscode');
 
-/** @param {vscode.ExtensionContext} context */
+const { LessonsProvider, ProgressProvider } = require('./sidebar');
+const { getLessonPanel }    = require('./panels/lesson');
+const { getGamePanel }      = require('./panels/game');
+const { getWelcomePanel }   = require('./panels/welcome');
+const { getCheatsheetPanel} = require('./panels/cheatsheet');
+const { getDailyPanel }     = require('./panels/daily');
+
 function activate(context) {
   const lessonsProvider  = new LessonsProvider(context);
   const progressProvider = new ProgressProvider(context);
   const providers = { lessons: lessonsProvider, progress: progressProvider };
 
-  // ── Tree Views ──────────────────────────────────────────────────────────
-  vscode.window.createTreeView("vimquest.lessonsView", {
-    treeDataProvider: lessonsProvider,
-    showCollapseAll: false,
-  });
-  vscode.window.createTreeView("vimquest.progressView", {
-    treeDataProvider: progressProvider,
-    showCollapseAll: false,
-  });
+  // ── Tree Views ────────────────────────────────────────────────
+  vscode.window.createTreeView('vimquest.lessonsView',  { treeDataProvider: lessonsProvider,  showCollapseAll: false });
+  vscode.window.createTreeView('vimquest.progressView', { treeDataProvider: progressProvider, showCollapseAll: false });
 
-  // ── Commands ────────────────────────────────────────────────────────────
+  // ── Commands ──────────────────────────────────────────────────
   context.subscriptions.push(
 
-    // openLesson — called from sidebar (.command on tree item passes lesson id as argument)
-    // arg is either a string lessonId (from tree item command) or a LessonItem object
-    vscode.commands.registerCommand("vimquest.openLesson", (arg) => {
-      let lessonId;
-      if (typeof arg === "string") {
-        // called directly, e.g. vimquest.openLesson('l1')
-        lessonId = arg;
-      } else if (arg && typeof arg === "object" && arg.lessonId) {
-        // VS Code sometimes passes the tree item itself
-        lessonId = arg.lessonId;
-      } else if (arg && typeof arg === "object" && arg.id) {
-        lessonId = arg.id;
-      }
-
-      if (!lessonId) {
-        vscode.window.showErrorMessage("VimQuest: Could not determine which lesson to open.");
-        return;
-      }
+    vscode.commands.registerCommand('vimquest.openLesson', function(arg) {
+      var lessonId;
+      if (typeof arg === 'string')      lessonId = arg;
+      else if (arg && arg.lessonId)     lessonId = arg.lessonId;
+      else if (arg && arg.id)           lessonId = arg.id;
+      if (!lessonId) { vscode.window.showErrorMessage('VimQuest: Could not determine lesson.'); return; }
       getLessonPanel(context, lessonId, providers);
     }),
 
-    vscode.commands.registerCommand("vimquest.openGame", () => {
+    vscode.commands.registerCommand('vimquest.openGame', function() {
       getGamePanel(context, providers);
     }),
 
-    vscode.commands.registerCommand("vimquest.showWelcome", () => {
+    vscode.commands.registerCommand('vimquest.showWelcome', function() {
       getWelcomePanel(context, providers);
     }),
 
-    vscode.commands.registerCommand("vimquest.resetProgress", async () => {
+    vscode.commands.registerCommand('vimquest.openCheatsheet', function() {
+      getCheatsheetPanel(context, providers);
+    }),
+
+    vscode.commands.registerCommand('vimquest.dailyChallenge', function() {
+      getDailyPanel(context, providers);
+    }),
+
+    vscode.commands.registerCommand('vimquest.resetProgress', async function() {
       const pick = await vscode.window.showWarningMessage(
-        "Reset all VimQuest progress? This cannot be undone.",
-        "Yes, reset",
-        "Cancel"
+        'Reset all VimQuest progress? This cannot be undone.',
+        'Yes, reset', 'Cancel'
       );
-      if (pick === "Yes, reset") {
-        await context.globalState.update("vimquest.completed", []);
-        await context.globalState.update("vimquest.streak", 0);
-        await context.globalState.update("vimquest.lastDay", "");
+      if (pick === 'Yes, reset') {
+        await context.globalState.update('vimquest.completed', []);
+        await context.globalState.update('vimquest.streak', 0);
+        await context.globalState.update('vimquest.lastDay', '');
         lessonsProvider.refresh();
         progressProvider.refresh();
-        vscode.window.showInformationMessage("VimQuest: Progress reset successfully!");
+        vscode.window.showInformationMessage('VimQuest: Progress reset!');
       }
     })
   );
 
-  // ── First launch: show welcome dashboard ───────────────────────────────
-  const hasLaunched = context.globalState.get("vimquest.hasLaunched", false);
+  // ── Daily challenge nudge ──────────────────────────────────────
+  const lastDay   = context.globalState.get('vimquest.lastDay', '');
+  const today     = new Date().toDateString();
+  const completed = context.globalState.get('vimquest.completed', []);
+  if (lastDay !== today && completed.length > 0) {
+    setTimeout(function() {
+      vscode.window.showInformationMessage(
+        '⚔️ VimQuest: Your daily challenge is ready!',
+        'Take Challenge', 'Later'
+      ).then(function(pick) {
+        if (pick === 'Take Challenge') getDailyPanel(context, providers);
+      });
+    }, 2500);
+  }
+
+  // ── First-launch welcome ──────────────────────────────────────
+  const hasLaunched = context.globalState.get('vimquest.hasLaunched', false);
   if (!hasLaunched) {
-    context.globalState.update("vimquest.hasLaunched", true);
-    setTimeout(() => getWelcomePanel(context, providers), 800);
+    context.globalState.update('vimquest.hasLaunched', true);
+    setTimeout(function() { getWelcomePanel(context, providers); }, 800);
   }
 }
 
 function deactivate() {}
+
 module.exports = { activate, deactivate };

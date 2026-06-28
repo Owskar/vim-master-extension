@@ -89,4 +89,4 @@
 
 ## 📄 License
 
-[MIT License](LICENSE) — © 2024 Owskar
+[MIT License](LICENSE) — © 2026 Owskar

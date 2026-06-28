@@ -1,6 +1,6 @@
 const vscode = require("vscode");
-const { LESSONS } = require("./lessons");
-const { getRank }  = require("./sidebar");
+const { LESSONS } = require('../lessons');
+const { getRank }  = require('../sidebar');
 
 // Active panels map — one panel per lesson, reuse if already open
 const _panels = new Map();
@@ -71,13 +71,13 @@ function getLessonPanel(context, lessonId, providers) {
         openPracticeFile(lesson);
         break;
       case "openGame": {
-        const { getGamePanel } = require("./gamePanel");
+        const { getGamePanel } = require('./game');
         panel.dispose();
         getGamePanel(context, providers);
         break;
       }
       case "openWelcome": {
-        const { getWelcomePanel } = require("./welcomePanel");
+        const { getWelcomePanel } = require('./welcome');
         panel.dispose();
         getWelcomePanel(context, providers);
         break;
