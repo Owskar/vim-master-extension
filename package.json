@@ -49,7 +49,8 @@
       "vimMaster": [{
         "id": "vimMasterProgress",
         "name": "My Progress",
-        "type": "webview"
+        "type": "webview",
+        "icon": "media/sidebar-icon.svg"
       }]
     },
     "menus": {
@@ -69,6 +70,7 @@
     }]
   },
   "scripts": {
+    "test": "node --test",
     "lint": "eslint src",
     "package": "vsce package --allow-missing-repository --skip-license"
   },

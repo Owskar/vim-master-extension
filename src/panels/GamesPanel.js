@@ -26,11 +26,19 @@ class GamesPanel {
       GamesPanel.currentPanel = undefined;
       this.dispose();
     }, null, this._disposables);
-    this._panel.webview.onDidReceiveMessage(msg => {
+    this._panel.webview.onDidReceiveMessage(async msg => {
+      if (!msg || typeof msg !== 'object') return;
       if (msg.command === 'saveScore') {
-        this._storageManager.updateGameScore(msg.game, msg.score);
+        let outcome = false;
+        try {
+          outcome = await this._storageManager.updateGameScore(msg.game, msg.score);
+        } catch (e) { outcome = false; }
         const p = this._storageManager.getProgress();
-        this._panel.webview.postMessage({ command: 'scores', data: p ? p.gameHighScores : {} });
+        this._panel.webview.postMessage({
+          command: 'scores',
+          accepted: !!outcome && outcome.accepted !== false && outcome.success !== false,
+          data: p ? p.gameHighScores : {}
+        });
       }
     }, null, this._disposables);
     // Send scores on load
@@ -426,7 +434,7 @@ function racerEnd() {
   vscode.postMessage({ command: 'saveScore', game: 'vimRacer', score: racer.score });
   document.getElementById('racer-wrap').innerHTML =
     '<div class="gameover">' +
-    '<div class="go-title">time\'s up!</div>' +
+    '<div class="go-title">time\\'s up!</div>' +
     '<div class="go-score">' + racer.score + '</div>' +
     '<div class="go-sub">Rounds completed: ' + racer.round + ' &nbsp;|&nbsp; WPM: ' + (document.getElementById && document.getElementById("r-wpm") ? document.getElementById("r-wpm").textContent : 0) + '</div>' +
     '<button class="btn btn-green" onclick="location.reload()">↺ play again</button>' +
@@ -479,11 +487,18 @@ function combatNext() {
   document.getElementById('cl-score').textContent = combat.score;
 
   var shuffled = q.opts.slice().sort(function(){ return Math.random()-.5; });
-  var html = '';
+  var optionContainer = document.getElementById('cl-opts');
+  optionContainer.replaceChildren();
   shuffled.forEach(function(opt) {
-    html += '<div class="copt" onclick="combatAnswer(this,\'' + opt.replace(/'/g,"\\'") + '\',\'' + q.a.replace(/'/g,"\\'") + '\',\'' + (q.exp||'').replace(/'/g,"\\'") + '\')">' + opt + '</div>';
+    var option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'copt';
+    option.textContent = opt;
+    option.addEventListener('click', function() {
+      combatAnswer(option, opt, q.a, q.exp || '');
+    });
+    optionContainer.appendChild(option);
   });
-  document.getElementById('cl-opts').innerHTML = html;
 
   combatTick();
 }
@@ -612,7 +627,7 @@ function motionEnd() {
   vscode.postMessage({ command: 'saveScore', game: 'motionMaster', score: motion.score });
   document.getElementById('motion-game').innerHTML =
     '<div class="gameover">' +
-    '<div class="go-title">time\'s up!</div>' +
+    '<div class="go-title">time\\'s up!</div>' +
     '<div class="go-score">' + motion.score + '</div>' +
     '<div class="go-sub">Targets hit: ' + motion.hits + '</div>' +
     '<button class="btn btn-green" onclick="location.reload()">↺ play again</button>' +
@@ -633,11 +648,12 @@ var SNIPER_Q = [
   {text:'// This is a comment line', hl:'// This is a comment line', task:'Yank (copy) the entire line', answers:['yy','Y']},
 ];
 
-var sniper = { qs:[], cur:0, lives:3, score:0 };
+var sniper = { qs:[], cur:0, lives:3, score:0, answered:false, gameOver:false, scoreSubmitted:false };
 
 function sniperStart() {
   sniper.qs = SNIPER_Q.slice().sort(function(){ return Math.random()-.5; });
-  sniper.cur = 0; sniper.lives = 3; sniper.score = 0;
+  sniper.cur = 0; sniper.lives = 3; sniper.score = 0; sniper.answered = false;
+  sniper.gameOver = false; sniper.scoreSubmitted = false;
   document.getElementById('sniper-start').style.display = 'none';
   document.getElementById('sniper-game').style.display = 'block';
   sniperRender();
@@ -655,17 +671,21 @@ function sniperRender() {
   document.getElementById('sg-lives').textContent = '❤️'.repeat(sniper.lives) + (3-sniper.lives > 0 ? '🖤'.repeat(3-sniper.lives) : '');
   document.getElementById('sg-round').textContent = sniper.cur + 1;
   document.getElementById('sg-fb').textContent = '';
-  var inp = document.getElementById('sg-input'); if (inp) { inp.value = ''; inp.focus(); }
+  sniper.answered = false;
+  var inp = document.getElementById('sg-input'); if (inp) { inp.disabled = false; inp.value = ''; inp.focus(); }
 }
 
 function sniperSubmit() {
   var inp = document.getElementById('sg-input');
+  if (!inp || sniper.answered || sniper.gameOver) return;
   var val = inp.value.trim();
   if (!val) return;
   var q = sniper.qs[sniper.cur % sniper.qs.length];
   var correct = q.answers.some(function(a){ return val.toLowerCase() === a.toLowerCase(); });
   var fb = document.getElementById('sg-fb');
   if (correct) {
+    sniper.answered = true;
+    inp.disabled = true;
     sniper.score += 100; sniper.cur++;
     if (fb) fb.textContent = '✓ correct! +100 pts';
     if (fb) fb.style.color = 'var(--green)';
@@ -678,7 +698,13 @@ function sniperSubmit() {
     document.getElementById('sg-lives').textContent = '❤️'.repeat(Math.max(0,sniper.lives)) + '🖤'.repeat(3-Math.max(0,sniper.lives));
     inp.value = '';
     if (sniper.lives <= 0) {
-      vscode.postMessage({ command: 'saveScore', game: 'textSniper', score: sniper.score });
+      sniper.gameOver = true;
+      sniper.answered = true;
+      inp.disabled = true;
+      if (!sniper.scoreSubmitted) {
+        sniper.scoreSubmitted = true;
+        vscode.postMessage({ command: 'saveScore', game: 'textSniper', score: sniper.score });
+      }
       setTimeout(function() {
         document.getElementById('sniper-game').innerHTML =
           '<div class="gameover">' +
@@ -694,12 +720,14 @@ function sniperSubmit() {
 
 // ── HIGH SCORE DISPLAY ──
 window.addEventListener('message', function(e) {
-  if (e.data.command === 'scores') {
-    var s = e.data.data || {};
-    if (s.vimRacer) document.getElementById('sval-racer').textContent = s.vimRacer;
-    if (s.commandCombat) document.getElementById('sval-combat').textContent = s.commandCombat;
-    if (s.motionMaster) document.getElementById('sval-motion').textContent = s.motionMaster;
-    if (s.textSniper) document.getElementById('sval-sniper').textContent = s.textSniper;
+  var msg = e.data;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.command === 'scores' && msg.accepted !== false) {
+    var s = msg.data || {};
+    if (Number.isFinite(s.vimRacer)) document.getElementById('sval-racer').textContent = s.vimRacer;
+    if (Number.isFinite(s.commandCombat)) document.getElementById('sval-combat').textContent = s.commandCombat;
+    if (Number.isFinite(s.motionMaster)) document.getElementById('sval-motion').textContent = s.motionMaster;
+    if (Number.isFinite(s.textSniper)) document.getElementById('sval-sniper').textContent = s.textSniper;
   }
 });
 </script>

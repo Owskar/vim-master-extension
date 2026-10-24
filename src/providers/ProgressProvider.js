@@ -1,4 +1,9 @@
 const vscode = require('vscode');
+const COMMANDS = new Map([
+  ['openDashboard', 'vimMaster.openDashboard'],
+  ['openGames', 'vimMaster.openGames'],
+  ['dailyChallenge', 'vimMaster.dailyChallenge']
+]);
 
 class ProgressProvider {
   constructor(extensionUri, storageManager) {
@@ -11,16 +16,20 @@ class ProgressProvider {
     webviewView.webview.options = { enableScripts: true };
     webviewView.webview.html = this._buildHtml();
     webviewView.webview.onDidReceiveMessage(msg => {
-      if (msg.command === 'open') vscode.commands.executeCommand('vimMaster.' + msg.target);
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.command === 'open') {
+        const command = COMMANDS.get(msg.target);
+        if (command) vscode.commands.executeCommand(command);
+      }
     });
   }
 
   _buildHtml() {
     const p = this._storageManager.getProgress() || this._storageManager.initializeProgress();
-    const xpForLevel = l => l * l * 100;
     const l = p.level;
-    const xpThis = xpForLevel(l), xpNext = xpForLevel(l + 1);
-    const pct = Math.min(100, Math.round((p.xp - xpThis) / (xpNext - xpThis) * 100));
+    const levelInfo = this._storageManager.getLevelInfo(l);
+    const xpThis = levelInfo.xpForCurrentLevel, xpNext = levelInfo.xpForNextLevel;
+    const pct = levelInfo.progress;
     const done = (p.completedLessons || []).length;
     const totalLessons = 18;
 

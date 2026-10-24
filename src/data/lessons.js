@@ -673,7 +673,7 @@ Vim sets these automatically:
           quiz: [
             {
               question: "How do you set mark 'a' at the current cursor position?",
-              options: ["'a", "\`a", "ma", ":mark a"],
+              options: ["'a", "`a", "ma", ":mark a"],
               answer: 2,
               explanation: "ma sets mark a at the current position. Think 'm' for 'mark'."
             },

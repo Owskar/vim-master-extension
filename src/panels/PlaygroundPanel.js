@@ -1,4 +1,5 @@
 const vscode = require('vscode');
+const { EXERCISES } = require('../data/exercises');
 
 class PlaygroundPanel {
   static currentPanel = undefined;
@@ -26,9 +27,22 @@ class PlaygroundPanel {
       PlaygroundPanel.currentPanel = undefined;
       this.dispose();
     }, null, this._disposables);
-    this._panel.webview.onDidReceiveMessage(msg => {
-      if (msg.command === 'addXP') {
-        this._storageManager.addXP(msg.amount, msg.reason || 'playground');
+    this._panel.webview.onDidReceiveMessage(async msg => {
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.command === 'claimExercise') {
+        const knownExercise = EXERCISES.some(exercise => exercise.id === msg.exerciseId);
+        let outcome = false;
+        if (knownExercise) {
+          try {
+            outcome = await this._storageManager.claimPlaygroundExercise(msg.exerciseId) || false;
+          } catch (e) { outcome = false; }
+        }
+        this._panel.webview.postMessage({
+          command: 'exerciseClaimResult',
+          exerciseId: msg.exerciseId,
+          outcome,
+          progress: this._storageManager.getProgress()
+        });
       }
     }, null, this._disposables);
   }
@@ -40,6 +54,9 @@ class PlaygroundPanel {
   }
 
   _buildHtml() {
+    const exercisesJSON = JSON.stringify(EXERCISES);
+    const progressJSON = JSON.stringify(this._storageManager.getProgress() || {});
+
     // Samples as Node.js strings, injected as JSON — no backtick nesting
     const samples = {
       code: [
@@ -311,6 +328,10 @@ html,body{height:100%;font-family:var(--sans);background:var(--bg0);color:var(--
 <script>
 var vscode = acquireVsCodeApi();
 var SAMPLES = ${samplesJSON};
+var EXERCISES = ${exercisesJSON};
+var progress = ${progressJSON};
+var pendingExercises = [];
+var confirmedExercises = [];
 
 // ── STATE ──
 var st = {
@@ -620,7 +641,7 @@ function runCommand(cmd) {
   cmd = cmd.trim();
   logCmd(':'+cmd,'c');
   setMsg(':'+cmd);
-  if (cmd==='w'||cmd==='write') { setMsg('written (simulated)'); vscode.postMessage({command:'addXP',amount:10,reason:'saved file'}); }
+  if (cmd==='w'||cmd==='write') { setMsg('written (simulated)'); }
   else if (cmd==='q'||cmd==='quit') { setMsg(':q works in real Vim!'); }
   else if (cmd==='wq'||cmd==='x') { setMsg('saved and quit (simulated)'); }
   else if (cmd==='q!') { setMsg('force quit (simulated)'); }
@@ -735,38 +756,81 @@ function sTab(name, el) {
 }
 
 // ── EXERCISES ──
-var EX = [
-  {title:'1. Delete a Line',desc:'Put cursor on any line. Press dd to delete it.',xp:30},
-  {title:'2. Copy & Paste',desc:'Press yy to yank a line, then j + p to paste below.',xp:30},
-  {title:'3. Word Navigation',desc:'Navigate 5 words forward using only w.',xp:25},
-  {title:'4. Go to Last Line',desc:'Press G to jump to the last line of the file.',xp:20},
-  {title:'5. Search & Replace',desc:'Run :%s/const/let/g to replace all const with let.',xp:60},
-  {title:'6. Undo Chain',desc:'Make 3 edits then undo with u u u.',xp:35},
-  {title:'7. Append at End',desc:'Press A to insert at end of line without arrows.',xp:25},
-  {title:'8. Visual Select',desc:'Press V to select a line, then d to delete it.',xp:40},
-  {title:'9. Open Line Below',desc:'Press o to open a new line below and type.',xp:25},
-  {title:'10. Change Word',desc:'Move cursor to a word and press cw to change it.',xp:35}
-];
-
 function renderExercises() {
-  var html = '';
-  EX.forEach(function(ex, i) {
-    html += '<div class="ex-card" id="ex-'+i+'" onclick="claimEx('+i+')">' +
-      '<div class="ex-title">' + ex.title + '</div>' +
-      '<div class="ex-desc">' + ex.desc + '</div>' +
-      '<div class="ex-xp">+' + ex.xp + ' XP</div>' +
-    '</div>';
+  var list = document.getElementById('ex-list');
+  list.textContent = '';
+  EXERCISES.forEach(function(ex) {
+    var card = document.createElement('div');
+    card.className = 'ex-card';
+    card.id = 'ex-' + ex.id;
+    card.addEventListener('click', function() { claimEx(ex.id); });
+    var title = document.createElement('div');
+    title.className = 'ex-title';
+    title.textContent = ex.title;
+    var desc = document.createElement('div');
+    desc.className = 'ex-desc';
+    desc.textContent = ex.desc;
+    var xp = document.createElement('div');
+    xp.className = 'ex-xp';
+    xp.textContent = '+' + ex.xp + ' XP';
+    card.appendChild(title);
+    card.appendChild(desc);
+    card.appendChild(xp);
+    list.appendChild(card);
+    if (isExerciseClaimed(ex.id)) markExerciseClaimed(card);
   });
-  document.getElementById('ex-list').innerHTML = html;
 }
 
-function claimEx(i) {
-  var el = document.getElementById('ex-'+i);
-  if (!el || el.classList.contains('claimed')) return;
-  el.classList.add('claimed');
-  el.innerHTML += '<div style="font-size:10px;color:var(--green);margin-top:4px;font-family:var(--mono)">// claimed ✓</div>';
-  vscode.postMessage({ command:'addXP', amount:EX[i].xp, reason:EX[i].title });
+function isExerciseClaimed(id) {
+  var stored = ['playgroundExerciseClaims', 'claimedExercises', 'playgroundExercises', 'completedExercises']
+    .reduce(function(claims, key) {
+      return claims.concat(Array.isArray(progress[key]) ? progress[key] : []);
+    }, []);
+  return confirmedExercises.indexOf(id) >= 0 || stored.some(function(item) {
+    var claimedId = typeof item === 'string'
+      ? item
+      : item && typeof item === 'object' ? item.exerciseId || item.id : null;
+    return claimedId === id;
+  });
 }
+
+function markExerciseClaimed(card) {
+  if (!card || card.classList.contains('claimed')) return;
+  card.classList.add('claimed');
+  var status = document.createElement('div');
+  status.style.cssText = 'font-size:10px;color:var(--green);margin-top:4px;font-family:var(--mono)';
+  status.textContent = '// claimed ✓';
+  card.appendChild(status);
+  card.setAttribute('aria-disabled', 'true');
+}
+
+function claimEx(id) {
+  var ex = EXERCISES.find(function(item) { return item.id === id; });
+  var card = document.getElementById('ex-' + id);
+  if (!ex || !card || isExerciseClaimed(id) || pendingExercises.indexOf(id) >= 0) return;
+  pendingExercises.push(id);
+  card.setAttribute('aria-busy', 'true');
+  vscode.postMessage({ command:'claimExercise', exerciseId:id });
+}
+
+window.addEventListener('message', function(e) {
+  var msg = e.data;
+  if (!msg || typeof msg !== 'object' || msg.command !== 'exerciseClaimResult') return;
+  pendingExercises = pendingExercises.filter(function(id) { return id !== msg.exerciseId; });
+  if (msg.progress && typeof msg.progress === 'object') progress = msg.progress;
+  var card = document.getElementById('ex-' + msg.exerciseId);
+  if (card) card.removeAttribute('aria-busy');
+  var outcome = msg.outcome;
+  var accepted = outcome && outcome.success !== false && outcome.claimed !== false && outcome.accepted !== false;
+  if (accepted) {
+    if (confirmedExercises.indexOf(msg.exerciseId) < 0) confirmedExercises.push(msg.exerciseId);
+    markExerciseClaimed(card);
+    if (Number.isFinite(outcome.xpGained)) setMsg('+' + outcome.xpGained + ' XP · exercise claimed');
+    else setMsg('exercise claimed');
+  } else {
+    setMsg('exercise claim rejected');
+  }
+});
 
 // ── LOG ──
 function logCmd(cmd, type) {
@@ -776,7 +840,13 @@ function logCmd(cmd, type) {
   var t = d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0')+':'+d.getSeconds().toString().padStart(2,'0');
   var item = document.createElement('div');
   item.className = 'log-item log-' + (type||'n');
-  item.innerHTML = '<span class="log-time">'+t+'</span><span>'+cmd+'</span>';
+  var time = document.createElement('span');
+  time.className = 'log-time';
+  time.textContent = t;
+  var command = document.createElement('span');
+  command.textContent = cmd;
+  item.appendChild(time);
+  item.appendChild(command);
   el.insertBefore(item, el.firstChild);
   if (el.children.length > 60) el.lastChild.remove();
 }

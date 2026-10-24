@@ -47,19 +47,50 @@ class DashboardPanel {
     }, null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(async (msg) => {
+      if (!msg || typeof msg !== 'object') return;
       switch (msg.command) {
         case 'completeLesson': {
-          const r = this._storageManager.completeLesson(msg.lessonId);
-          if (r && r.leveledUp) {
-            vscode.window.showInformationMessage('🎉 LEVEL UP! You reached Level ' + r.newLevel + '!');
+          const knownLesson = LESSONS.chapters.some(chapter =>
+            chapter.lessons.some(lesson => lesson.id === msg.lessonId)
+          );
+          let outcome = false;
+          if (knownLesson) {
+            try {
+              outcome = await this._storageManager.completeLesson(msg.lessonId) || false;
+            } catch (e) { outcome = false; }
           }
-          vscode.window.setStatusBarMessage('⚡ +' + (r ? r.xpGained : 150) + ' XP earned!', 3000);
-          this._panel.webview.postMessage({ command: 'progress', data: this._storageManager.getProgress() });
+          if (outcome && outcome.leveledUp) {
+            vscode.window.showInformationMessage('🎉 LEVEL UP! You reached Level ' + outcome.newLevel + '!');
+          }
+          if (outcome && outcome.success !== false && Number.isFinite(outcome.xpGained) && outcome.xpGained > 0) {
+            vscode.window.setStatusBarMessage('⚡ +' + outcome.xpGained + ' XP earned!', 3000);
+          }
+          this._panel.webview.postMessage({
+            command: 'progress',
+            action: 'completeLesson',
+            lessonId: msg.lessonId,
+            outcome,
+            today: this._getTodayKey(),
+            data: this._storageManager.getProgress()
+          });
           break;
         }
-        case 'addXP': {
-          this._storageManager.addXP(msg.amount, msg.reason || 'bonus');
-          this._panel.webview.postMessage({ command: 'progress', data: this._storageManager.getProgress() });
+        case 'claimChallenge': {
+          const knownChallenge = DAILY_CHALLENGES.some(challenge => challenge.id === msg.challengeId);
+          let outcome = false;
+          if (knownChallenge) {
+            try {
+              outcome = await this._storageManager.claimDailyChallenge(msg.challengeId) || false;
+            } catch (e) { outcome = false; }
+          }
+          this._panel.webview.postMessage({
+            command: 'progress',
+            action: 'claimChallenge',
+            challengeId: msg.challengeId,
+            outcome,
+            today: this._getTodayKey(),
+            data: this._storageManager.getProgress()
+          });
           break;
         }
         case 'openGames':
@@ -78,14 +109,22 @@ class DashboardPanel {
   }
   
 
+  _getTodayKey() {
+    const date = new Date();
+    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+  }
+
   _sendData(tab) {
     try {
       this._panel.webview.postMessage({
         command: 'reload',
         progress: this._storageManager.getProgress(),
+        today: this._getTodayKey(),
         tab: tab || 'home'
       });
-    } catch (e) {}
+    } catch {
+      console.error('[VimMaster] Unable to refresh dashboard data.');
+    }
   }
 
   dispose() {
@@ -106,6 +145,7 @@ class DashboardPanel {
     const CDATA = JSON.stringify(CHEAT_SHEET);
     const DDATA = JSON.stringify(DAILY_CHALLENGES);
     const ITAB  = JSON.stringify(this._initialTab || 'home');
+    const TODAY = JSON.stringify(this._getTodayKey());
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -472,6 +512,11 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
   var CS = ${CDATA};
   var CHALLENGES = ${DDATA};
   var INITIAL_TAB = ${ITAB};
+  var today = ${TODAY};
+  var locallyClaimedChallengeDate = today;
+  var locallyClaimedChallengeIds = [];
+  var pendingChallengeIds = [];
+  var pendingLessonId = null;
 
   var ALL_BADGES = [
     {id:'first_lesson', icon:'🎓', name:'First Steps', desc:'Complete 1 lesson'},
@@ -489,8 +534,8 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
   ];
 
   // ── XP HELPERS ── (fixed: level 1 starts at 0 XP)
-  function xpStart(l) { return l <= 1 ? 0 : (l-1) * (l-1) * 200; }
-  function xpEnd(l)   { return l * l * 200; }
+  function xpStart(l) { return (l-1) * (l-1) * 100; }
+  function xpEnd(l)   { return l * l * 100; }
 
   function levelTitle(l) {
     if (l < 3)  return 'Vim Newbie';
@@ -505,7 +550,7 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
     var l = progress.level || 1;
     var s = xpStart(l), e = xpEnd(l);
     var span = e - s; if (span <= 0) return 0;
-    return Math.min(100, Math.max(0, Math.round((progress.xp - s) / span * 100)));
+    return Math.min(100, Math.max(0, Math.floor((progress.xp - s) / span * 100)));
   }
 
   function xpLabel() {
@@ -600,7 +645,7 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
     var done = ch.lessons.filter(function(l) { return (progress.completedLessons||[]).indexOf(l.id) >= 0; }).length;
     var pct = total ? Math.round(done/total*100) : 0;
     return '<div class="chblock" id="ch-' + ch.id + '">' +
-      '<div class="chhdr" onclick="toggleCh(\'' + ch.id + '\')">' +
+      '<div class="chhdr" onclick="toggleCh(\\'' + ch.id + '\\')">' +
         '<div class="chico" style="background:' + ch.color + '22;border:1px solid ' + ch.color + '44">' + ch.icon + '</div>' +
         '<div class="chtitle">' + ch.title + '</div>' +
         '<span class="chmeta">' + done + '/' + total + '</span>' +
@@ -613,13 +658,14 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
 
   function lessonRowHTML(l) {
     var done = (progress.completedLessons||[]).indexOf(l.id) >= 0;
+    var reward = done ? 25 : 150;
     var dc = l.difficulty === 'Beginner' ? 'tbeg' : l.difficulty === 'Intermediate' ? 'tint' : 'tadv';
-    return '<div class="lrow" onclick="openLesson(\'' + l.id + '\')">' +
+    return '<div class="lrow" onclick="openLesson(\\'' + l.id + '\\')">' +
       '<div class="ldot' + (done?' done':'') + '">' + (done?'✓':'') + '</div>' +
       '<span class="ltxt">' + l.title + '</span>' +
       '<div class="ltags">' +
         '<span class="tag ' + dc + '">' + l.difficulty + '</span>' +
-        '<span class="tag txp">+' + l.xp + ' XP</span>' +
+        '<span class="tag txp">+' + reward + ' XP</span>' +
       '</div>' +
     '</div>';
   }
@@ -660,36 +706,39 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
         '<div class="qexp" id="qe-' + i + '">' + q.explanation + '</div>' +
       '</div>';
     });
-    qh += '<button class="donebtn" id="donebtn" disabled onclick="doComplete()">$ commit lesson — earn ' + found.xp + ' XP</button>';
+    var alreadyCompleted = (progress.completedLessons || []).indexOf(found.id) >= 0;
+    var reward = alreadyCompleted ? 25 : 150;
+    qh += '<button class="donebtn" id="donebtn" disabled onclick="doComplete()">$ claim lesson — earn ' + reward + ' XP</button>';
     setHtml('dl-quiz', qh);
   };
 
   window.ansQ = function(qi, oi, correct) {
     if (qAnswered.indexOf(qi) >= 0) return;
+    var options = document.querySelectorAll('[id^="qo-' + qi + '-"]');
+    if (oi !== correct) {
+      var selected = document.getElementById('qo-' + qi + '-' + oi);
+      if (selected) selected.classList.add('wrong');
+      return;
+    }
     qAnswered.push(qi);
-    document.querySelectorAll('[id^="qo-' + qi + '-"]').forEach(function(o, i) {
+    options.forEach(function(o, i) {
+      o.classList.remove('wrong');
       if (i === correct) o.classList.add('correct');
-      else if (i === oi && oi !== correct) o.classList.add('wrong');
       o.style.pointerEvents = 'none';
     });
     var exp = document.getElementById('qe-' + qi); if (exp) exp.classList.add('show');
     if (curLesson && qAnswered.length === curLesson.quiz.length) {
-      var btn = document.getElementById('donebtn'); if (btn) btn.disabled = false;
+      var btn = document.getElementById('donebtn');
+      if (btn && pendingLessonId !== curLesson.id) btn.disabled = false;
     }
   };
 
   window.doComplete = function() {
-    if (!curLesson) return;
-    vscode.postMessage({ command: 'completeLesson', lessonId: curLesson.id });
+    if (!curLesson || pendingLessonId === curLesson.id || qAnswered.length !== curLesson.quiz.length) return;
+    pendingLessonId = curLesson.id;
     var btn = document.getElementById('donebtn');
-    if (btn) { btn.textContent = '✓ committed'; btn.disabled = true; }
-    showToast('+' + curLesson.xp + ' XP — lesson done!', 'xp');
-    if ((progress.completedLessons||[]).indexOf(curLesson.id) < 0) {
-      progress.completedLessons = progress.completedLessons || [];
-      progress.completedLessons.push(curLesson.id);
-      progress.xp += curLesson.xp;
-      updateNav();
-    }
+    if (btn) { btn.disabled = true; btn.textContent = '$ committing...'; }
+    vscode.postMessage({ command: 'completeLesson', lessonId: curLesson.id });
   };
 
   window.backToList = function() {
@@ -714,9 +763,18 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
   }
 
   // ── DAILY ──
+  function claimedChallengesToday() {
+    var claimState = progress.dailyChallengeClaims || {};
+    var ids = Object.keys(claimState).filter(function(id) { return claimState[id] === today; });
+    return ids.concat(locallyClaimedChallengeDate === today ? locallyClaimedChallengeIds : []);
+  }
+
   function renderDaily() {
+    var claimed = claimedChallengesToday();
     setHtml('daily-list', CHALLENGES.map(function(ch, i) {
       var dc = ch.difficulty === 'Beginner' ? 'tbeg' : ch.difficulty === 'Intermediate' ? 'tint' : 'tadv';
+      var isClaimed = claimed.indexOf(ch.id) >= 0;
+      var isPending = pendingChallengeIds.indexOf(ch.id) >= 0;
       return '<div class="dccard">' +
         '<div class="dctitle">' + ch.title + '</div>' +
         '<div class="dcdesc">' + ch.description + '</div>' +
@@ -725,7 +783,7 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
           '<span class="tag ' + dc + '">' + ch.difficulty + '</span>' +
           '<span class="tag txp">+' + ch.xp + ' XP</span>' +
           '<button class="btn btn-gh" onclick="toggleHint(' + i + ')">$ hint</button>' +
-          '<button class="btn btn-g" style="margin-left:auto" onclick="claimXP(' + ch.xp + ',\'' + ch.title.replace(/'/g, "\\'") + '\')">claim XP ⚡</button>' +
+          '<button class="btn btn-g" style="margin-left:auto" ' + (isClaimed || isPending ? 'disabled' : '') + ' onclick="claimChallenge(' + i + ')">' + (isClaimed ? 'claimed today ✓' : isPending ? 'claiming...' : 'claim XP ⚡') + '</button>' +
         '</div>' +
       '</div>';
     }).join(''));
@@ -735,11 +793,11 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
     var e = document.getElementById('dch-' + i); if (e) e.classList.toggle('show');
   };
 
-  window.claimXP = function(amt, reason) {
-    vscode.postMessage({ command: 'addXP', amount: amt, reason: reason });
-  
-    updateNav();
-    showToast('+' + amt + ' XP — ' + reason, 'xp');
+  window.claimChallenge = function(i) {
+    var challenge = CHALLENGES[i];
+    if (!challenge || claimedChallengesToday().indexOf(challenge.id) >= 0 || pendingChallengeIds.indexOf(challenge.id) >= 0) return;
+    pendingChallengeIds.push(challenge.id);
+    vscode.postMessage({ command: 'claimChallenge', challengeId: challenge.id });
   };
 
   // ── PROGRESS ──
@@ -801,19 +859,19 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
       .replace(/^### (.+)$/gm, '<h3>$1</h3>')
       .replace(/^## (.+)$/gm, '<h2>$1</h2>')
       .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      .replace(/\`\`\`[\w]*\n([\s\S]*?)\`\`\`/g, '<pre>$1</pre>')
+      .replace(/\`\`\`[\\w]*\\n([\\s\\S]*?)\`\`\`/g, '<pre>$1</pre>')
       .replace(/\`([^\`]+)\`/g, '<code>$1</code>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
       .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
       .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-      .replace(/^\|(.+)\|$/gm, function(row) {
+      .replace(/(<li>.*<\\/li>\\n?)+/g, '<ul>$&</ul>')
+      .replace(/^\\|(.+)\\|$/gm, function(row) {
         var cells = row.split('|').slice(1,-1);
-        if (cells.every(function(c){ return /^[-\s:]+$/.test(c.trim()); })) return '';
+        if (cells.every(function(c){ return /^[-\\s:]+$/.test(c.trim()); })) return '';
         return '<tr>' + cells.map(function(c){ return '<td>' + c.trim() + '</td>'; }).join('') + '</tr>';
       })
-      .replace(/(<tr>[\s\S]*?<\/tr>\n?)+/g, '<table>$&</table>')
-      .replace(/\n\n/g, '<br>');
+      .replace(/(<tr>[\\s\\S]*?<\\/tr>\\n?)+/g, '<table>$&</table>')
+      .replace(/\\n\\n/g, '<br>');
   }
 
   // ── MESSAGE HANDLER (for progress updates after actions) ──
@@ -833,25 +891,51 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
 
   window.addEventListener('message', function(e) {
   var msg = e.data;
-
-  // if (msg.command === 'progress' && msg.data) {
-  //   progress = msg.data;
-  //   updateNav();
-  //   renderTab(currentTab);
-  // }
+  if (!msg || typeof msg !== 'object') return;
 
   if (msg.command === 'progress' && msg.data) {
   progress = msg.data;
-
+  if (msg.today) today = msg.today;
+  var outcome = msg.outcome;
+  var completionAccepted = false;
+  if (msg.action === 'completeLesson') {
+    if (pendingLessonId === msg.lessonId) pendingLessonId = null;
+    completionAccepted = !!(outcome && outcome.success === true && outcome.completed !== false);
+    if (completionAccepted && Number.isFinite(outcome.xpGained) && outcome.xpGained > 0) {
+      showToast('+' + outcome.xpGained + ' XP — lesson done!', 'xp');
+    } else if (!completionAccepted) {
+      showToast('Lesson reward was not claimed. You can try again.', 'info');
+    }
+  } else if (msg.action === 'claimChallenge') {
+    pendingChallengeIds = pendingChallengeIds.filter(function(id) { return id !== msg.challengeId; });
+    if (outcome && outcome.success === true && outcome.claimed !== false) {
+      var claimDate = outcome.claimDate || today;
+      if (locallyClaimedChallengeDate !== claimDate) {
+        locallyClaimedChallengeDate = claimDate;
+        locallyClaimedChallengeIds = [];
+      }
+      if (locallyClaimedChallengeIds.indexOf(msg.challengeId) < 0) locallyClaimedChallengeIds.push(msg.challengeId);
+      if (Number.isFinite(outcome.xpGained)) showToast('+' + outcome.xpGained + ' XP — daily challenge claimed!', 'xp');
+    } else {
+      showToast('Daily challenge reward was not claimed. You can try again.', 'info');
+    }
+  }
   updateNav();
-
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + currentTab)?.classList.add('active');
-
-  renderTab(currentTab);
+  if (currentTab === 'lessons' && curLesson && msg.action === 'completeLesson' && msg.lessonId === curLesson.id) {
+    setHtml('all-chs', LESSONS.chapters.map(chapterHTML).join(''));
+    var doneButton = document.getElementById('donebtn');
+    if (doneButton) {
+      var reward = (progress.completedLessons || []).indexOf(curLesson.id) >= 0 ? 25 : 150;
+      doneButton.textContent = completionAccepted ? '✓ claimed +' + (outcome.xpGained || 0) + ' XP' : '$ claim lesson — earn ' + reward + ' XP';
+      doneButton.disabled = completionAccepted || qAnswered.length !== curLesson.quiz.length;
+    }
+  } else {
+    renderTab(currentTab);
+  }
 }
   else if (msg.command === 'reload') {
     progress = msg.progress || progress;
+    if (msg.today) today = msg.today;
 
     currentTab = msg.tab || 'home';
 
@@ -861,7 +945,6 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg0); color:
 
     goTab(currentTab);
   }
-});
 });
 
   // ── INIT ──
