@@ -3,6 +3,7 @@ const Module = require('node:module');
 const vm = require('node:vm');
 const { test } = require('node:test');
 const { LESSONS } = require('../src/data/lessons');
+const sequence = require('../src/games/sequence');
 
 function loadPanel(modulePath) {
   const originalLoad = Module._load;
@@ -103,6 +104,86 @@ test('GamesPanel generated inline script parses', () => {
   const panel = Object.create(GamesPanel.prototype);
 
   assertPanelScriptParses('GamesPanel', panel._buildHtml());
+});
+
+test('Sequence Builder scores each non-empty attempt', () => {
+  const elements = new Map([
+    ['seq-inp', { value: '', focus() {} }],
+    ['seq-fb', { innerHTML: '' }]
+  ]);
+  const timeouts = [];
+  const savedScores = [];
+  let rendered = '';
+  const context = {
+    SEQ_DATA: sequence.data,
+    window: {},
+    ge: id => elements.get(id),
+    shuffle: items => [items[0]],
+    hdr: () => '',
+    prog: () => '',
+    esc: value => value,
+    setBox: html => { rendered = html; },
+    setTimeout: callback => timeouts.push(callback),
+    result: (_icon, _title, score) => score,
+    saveScore: (game, score) => savedScores.push({ game, score })
+  };
+  vm.runInNewContext(sequence.script(), context);
+
+  context.window.SEQ.start();
+  const input = elements.get('seq-inp');
+  input.value = 'incorrect';
+  context.window.SEQ.check();
+  assert.equal(timeouts.length, 0, 'an incorrect retry should not advance the question');
+
+  input.value = sequence.data[0].ans;
+  context.window.SEQ.check();
+  assert.equal(timeouts.length, 1, 'the correct answer should advance once');
+  timeouts[0]();
+
+  assert.equal(rendered, '1/2 correct (50%)');
+  assert.deepEqual(savedScores, [{ game: 'seq', score: 50 }]);
+});
+
+test('Sequence Builder counts a repeated correct submission once before advancing', () => {
+  const elements = new Map([
+    ['seq-inp', { value: '', focus() {} }],
+    ['seq-fb', { innerHTML: '' }]
+  ]);
+  const timeouts = [];
+  const savedScores = [];
+  let rendered = '';
+  const context = {
+    SEQ_DATA: sequence.data.slice(0, 2),
+    window: {},
+    ge: id => elements.get(id),
+    shuffle: items => items,
+    hdr: () => '',
+    prog: () => '',
+    esc: value => value,
+    setBox: html => { rendered = html; },
+    setTimeout: callback => timeouts.push(callback),
+    result: (_icon, _title, score) => score,
+    saveScore: (game, score) => savedScores.push({ game, score })
+  };
+  vm.runInNewContext(sequence.script(), context);
+
+  context.window.SEQ.start();
+  const input = elements.get('seq-inp');
+  input.value = sequence.data[0].ans;
+  context.window.SEQ.check();
+  context.window.SEQ.check();
+
+  assert.equal(timeouts.length, 1, 'duplicate correct submissions should schedule one advance');
+  timeouts[0]();
+  assert.ok(rendered.includes(sequence.data[1].task), 'one timer should advance to the next task');
+
+  input.value = sequence.data[1].ans;
+  context.window.SEQ.check();
+  assert.equal(timeouts.length, 2, 'the next task should accept its own correct submission');
+  timeouts[1]();
+
+  assert.equal(rendered, '2/2 correct (100%)');
+  assert.deepEqual(savedScores, [{ game: 'seq', score: 100 }]);
 });
 
 test('PlaygroundPanel generated inline script parses', () => {

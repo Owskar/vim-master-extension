@@ -1,6 +1,12 @@
 .vscode/**
-.vscode-test/**
 node_modules/**
-.eslintrc.json
 .gitignore
+*.vsix
 **/*.map
+.github/**
+.env*
+*.pem
+*.key
+*.p12
+*.pfx
+**/secrets/**

@@ -1,84 +1,86 @@
+// ─────────────────────────────────────────────────────────────
+//  VimQuest — Main Extension Entry Point
+//  src/extension.js
+// ─────────────────────────────────────────────────────────────
 const vscode = require('vscode');
-const { DashboardPanel } = require('./panels/DashboardPanel');
-const { GamesPanel } = require('./panels/GamesPanel');
-const { PlaygroundPanel } = require('./panels/PlaygroundPanel');
-const { ProgressProvider } = require('./providers/ProgressProvider');
-const { StorageManager } = require('./utils/StorageManager');
-const { NotificationManager } = require('./utils/NotificationManager');
 
-let storageManager;
+const { LessonsProvider, ProgressProvider, resetProgress } = require('./sidebar');
+const { getLessonPanel }    = require('./panels/lesson');
+const { getGamePanel }      = require('./panels/game');
+const { getWelcomePanel, refreshWelcomePanel } = require('./panels/welcome');
+const { getCheatsheetPanel} = require('./panels/cheatsheet');
+const { getDailyPanel } = require('./panels/daily');
 
 function activate(context) {
-  console.log('VimMaster extension is now active!');
+  const lessonsProvider  = new LessonsProvider(context);
+  const progressProvider = new ProgressProvider(context);
+  const providers = { lessons: lessonsProvider, progress: progressProvider };
 
-  storageManager = new StorageManager(context.globalState);
-  const notificationManager = new NotificationManager(storageManager);
+  // ── Tree Views ────────────────────────────────────────────────
+  vscode.window.createTreeView('vimquest.lessonsView',  { treeDataProvider: lessonsProvider,  showCollapseAll: false });
+  vscode.window.createTreeView('vimquest.progressView', { treeDataProvider: progressProvider, showCollapseAll: false });
 
-  // Initialize progress if first time
-  if (!storageManager.getProgress()) {
-    storageManager.initializeProgress();
-    vscode.window.showInformationMessage(
-      '🎮 Welcome to VimMaster! Ready to master Vim? Open the dashboard to begin your journey!',
-      'Open Dashboard'
-    ).then(selection => {
-      if (selection === 'Open Dashboard') {
-        DashboardPanel.createOrShow(context.extensionUri, storageManager);
-      }
-    });
-  }
-
-  // Register sidebar progress view
-  const progressProvider = new ProgressProvider(context.extensionUri, storageManager);
+  // ── Commands ──────────────────────────────────────────────────
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('vimMasterProgress', progressProvider)
-  );
 
-  // Register all commands
-  context.subscriptions.push(
-    vscode.commands.registerCommand('vimMaster.openDashboard', () => {
-      DashboardPanel.createOrShow(context.extensionUri, storageManager);
+    vscode.commands.registerCommand('vimquest.openLesson', function(arg) {
+      var lessonId;
+      if (typeof arg === 'string')      lessonId = arg;
+      else if (arg && arg.lessonId)     lessonId = arg.lessonId;
+      else if (arg && arg.id)           lessonId = arg.id;
+      if (!lessonId) { vscode.window.showErrorMessage('VimQuest: Could not determine lesson.'); return; }
+      getLessonPanel(context, lessonId, providers);
     }),
 
-    vscode.commands.registerCommand('vimMaster.startLesson', () => {
-      DashboardPanel.createOrShow(context.extensionUri, storageManager);
+    vscode.commands.registerCommand('vimquest.openGame', function() {
+      getGamePanel(context, providers);
     }),
 
-    vscode.commands.registerCommand('vimMaster.openPlayground', () => {
-      PlaygroundPanel.createOrShow(context.extensionUri, storageManager);
+    vscode.commands.registerCommand('vimquest.showWelcome', function() {
+      getWelcomePanel(context, providers);
     }),
 
-    vscode.commands.registerCommand('vimMaster.openGames', () => {
-      GamesPanel.createOrShow(context.extensionUri, storageManager);
+    vscode.commands.registerCommand('vimquest.openCheatsheet', function() {
+      getCheatsheetPanel(context, providers);
     }),
 
-    vscode.commands.registerCommand('vimMaster.viewProgress', () => {
-      DashboardPanel.createOrShow(context.extensionUri, storageManager);
+    vscode.commands.registerCommand('vimquest.dailyChallenge', function() {
+      getDailyPanel(context, providers);
     }),
 
-    vscode.commands.registerCommand('vimMaster.openCheatSheet', () => {
-      DashboardPanel.createOrShow(context.extensionUri, storageManager, 'cheatsheet');
-    }),
-
-    vscode.commands.registerCommand('vimMaster.dailyChallenge', () => {
-      DashboardPanel.createOrShow(context.extensionUri, storageManager, 'daily');
-    }),
-
-    vscode.commands.registerCommand('vimMaster.resetProgress', async () => {
-      const confirm = await vscode.window.showWarningMessage(
-        'Are you sure you want to reset all your VimMaster progress? This cannot be undone!',
-        'Yes, Reset Everything',
-        'Cancel'
+    vscode.commands.registerCommand('vimquest.resetProgress', async function() {
+      const pick = await vscode.window.showWarningMessage(
+        'Reset all VimQuest progress? This cannot be undone.',
+        'Yes, reset', 'Cancel'
       );
-      if (confirm === 'Yes, Reset Everything') {
-        storageManager.initializeProgress();
-        vscode.window.showInformationMessage('Progress reset! Starting fresh 🎯');
-        DashboardPanel.createOrShow(context.extensionUri, storageManager);
+      if (pick === 'Yes, reset') {
+        await resetProgress(context, providers, refreshWelcomePanel);
+        vscode.window.showInformationMessage('VimQuest: Progress reset!');
       }
     })
   );
 
-  // Daily reminder
-  notificationManager.scheduleDailyReminder(context);
+  // ── Daily challenge nudge ──────────────────────────────────────
+  const lastDay   = context.globalState.get('vimquest.lastDay', '');
+  const today     = new Date().toDateString();
+  const completed = context.globalState.get('vimquest.completed', []);
+  if (lastDay !== today && completed.length > 0) {
+    setTimeout(function() {
+      vscode.window.showInformationMessage(
+        '⚔️ VimQuest: Your daily challenge is ready!',
+        'Take Challenge', 'Later'
+      ).then(function(pick) {
+        if (pick === 'Take Challenge') getDailyPanel(context, providers);
+      });
+    }, 2500);
+  }
+
+  // ── First-launch welcome ──────────────────────────────────────
+  const hasLaunched = context.globalState.get('vimquest.hasLaunched', false);
+  if (!hasLaunched) {
+    context.globalState.update('vimquest.hasLaunched', true);
+    setTimeout(function() { getWelcomePanel(context, providers); }, 800);
+  }
 }
 
 function deactivate() {}
